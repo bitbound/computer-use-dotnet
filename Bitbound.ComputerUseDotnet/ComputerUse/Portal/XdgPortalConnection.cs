@@ -25,6 +25,17 @@ internal sealed class XdgPortalConnection : IDisposable
 
   public bool IsConnected => _connection is not null;
 
+  private Connection Connection
+  {
+    get
+    {
+      lock (_sync)
+      {
+        return _connection ?? throw new InvalidOperationException("The portal connection is not established.");
+      }
+    }
+  }
+
   public async Task ConnectAsync(CancellationToken cancellationToken = default)
   {
     lock (_sync)
@@ -60,11 +71,18 @@ internal sealed class XdgPortalConnection : IDisposable
     }
   }
 
-  /// <summary>Generates a handle token valid for portal object paths ([A-Za-z0-9_]).</summary>
-  public string NextHandleToken()
+  public void Dispose()
   {
-    var number = Interlocked.Increment(ref _tokenCounter);
-    return $"bitboundcu{number}";
+    Connection? connection;
+
+    lock (_sync)
+    {
+      connection = _connection;
+      _connection = null;
+      _connectionInfo = null;
+    }
+
+    connection?.Dispose();
   }
 
   /// <summary>Predicts the request object path the portal will emit for the given handle token.</summary>
@@ -73,6 +91,13 @@ internal sealed class XdgPortalConnection : IDisposable
     var localName = GetConnectionInfo().LocalName;
     var senderName = localName.TrimStart(':').Replace('.', '_');
     return $"{PortalObjectPath}/request/{senderName}/{handleToken}";
+  }
+
+  /// <summary>Generates a handle token valid for portal object paths ([A-Za-z0-9_]).</summary>
+  public string NextHandleToken()
+  {
+    var number = Interlocked.Increment(ref _tokenCounter);
+    return $"bitboundcu{number}";
   }
 
   /// <summary>
@@ -119,36 +144,11 @@ internal sealed class XdgPortalConnection : IDisposable
     }
   }
 
-  public void Dispose()
-  {
-    Connection? connection;
-
-    lock (_sync)
-    {
-      connection = _connection;
-      _connection = null;
-      _connectionInfo = null;
-    }
-
-    connection?.Dispose();
-  }
-
   private ConnectionInfo GetConnectionInfo()
   {
     lock (_sync)
     {
       return _connectionInfo ?? throw new InvalidOperationException("The portal connection is not established.");
-    }
-  }
-
-  private Connection Connection
-  {
-    get
-    {
-      lock (_sync)
-      {
-        return _connection ?? throw new InvalidOperationException("The portal connection is not established.");
-      }
     }
   }
 }

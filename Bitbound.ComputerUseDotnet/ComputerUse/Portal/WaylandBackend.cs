@@ -19,19 +19,18 @@ internal sealed class WaylandBackend(
   private const uint DeviceTypeKeyboardAndPointer = 3;
   private const uint PersistModeRestoreToken = 2;
 
-  private readonly ILogger<WaylandBackend> _logger = logger;
   private readonly IFileSystem _fileSystem = fileSystem;
-  private readonly RestoreTokenStore _restoreTokens = restoreTokens;
-  private readonly XdgPortalConnection _portal = new(logger);
   private readonly SemaphoreSlim _gate = new(1, 1);
+  private readonly ILogger<WaylandBackend> _logger = logger;
+  private readonly XdgPortalConnection _portal = new(logger);
+  private readonly RestoreTokenStore _restoreTokens = restoreTokens;
   private readonly Lock _stateSync = new();
 
+  private (int Width, int Height)? _lastScreenshotSize;
   private string? _sessionHandle;
   private List<PortalStream>? _streams;
-  private (int Width, int Height)? _lastScreenshotSize;
 
   public override string BackendName => "Linux Wayland (XDG portal Screenshot + RemoteDesktop)";
-
   public override DesktopEnvironmentType EnvironmentType => DesktopEnvironmentType.Wayland;
 
   public override async Task<SKBitmap> CaptureVirtualScreenAsync(CancellationToken cancellationToken = default)
@@ -137,6 +136,28 @@ internal sealed class WaylandBackend(
     }
   }
 
+  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default)
+  {
+    bool hasSession;
+
+    lock (_stateSync)
+    {
+      hasSession = _sessionHandle is not null;
+    }
+
+    return Task.FromResult(new PermissionStatus(
+      BackendName,
+      PermissionState.Unknown,
+      hasSession ? PermissionState.Granted : PermissionState.NotGranted,
+      hasSession
+        ? "A RemoteDesktop session is active, so input is granted. Screenshot permission state is unknown until a capture is attempted."
+        : "Input requires a RemoteDesktop portal session (a permission prompt on first use). Screenshot permission state is unknown until a capture is attempted."));
+  }
+
+  /// <summary>The RemoteDesktop portal offers no cursor position query; always null on Wayland.</summary>
+  public override Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default) =>
+    Task.FromResult<ScreenPoint?>(null);
+
   public override async Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default)
   {
     List<PortalStream>? streams;
@@ -179,90 +200,6 @@ internal sealed class WaylandBackend(
 
     var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
     await proxy.NotifyPointerMotionAbsoluteAsync(session, EmptyOptions(), stream.Id, ratioX, ratioY);
-  }
-
-  public override async Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
-  {
-    var session = await EnsureSessionAsync(cancellationToken);
-    var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
-
-    await proxy.NotifyPointerButtonAsync(
-      session,
-      EmptyOptions(),
-      (uint)LinuxKeycodes.GetButtonCode(button),
-      pressed ? 1u : 0u);
-  }
-
-  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
-  {
-    await MovePointerAsync(point, cancellationToken);
-
-    if (verticalClicks == 0 && horizontalClicks == 0)
-    {
-      return;
-    }
-
-    var session = await EnsureSessionAsync(cancellationToken);
-    var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
-
-    // Portal axis 0 = vertical (positive = up), axis 1 = horizontal (positive = right).
-    if (verticalClicks != 0)
-    {
-      await proxy.NotifyPointerAxisDiscreteAsync(session, EmptyOptions(), 0u, verticalClicks);
-    }
-
-    if (horizontalClicks != 0)
-    {
-      await proxy.NotifyPointerAxisDiscreteAsync(session, EmptyOptions(), 1u, horizontalClicks);
-    }
-  }
-
-  public override async Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
-  {
-    var session = await EnsureSessionAsync(cancellationToken);
-    var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
-    var skipped = 0;
-
-    foreach (var character in text)
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-
-      if (character is '\r')
-      {
-        continue;
-      }
-
-      if (!LinuxKeycodes.TryGetCharacter(character, out var keycode, out var requiresShift))
-      {
-        skipped++;
-        continue;
-      }
-
-      var shiftKeycode = (uint)LinuxKeycodes.KEY_LEFTSHIFT;
-
-      if (requiresShift)
-      {
-        await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), shiftKeycode, 1u);
-      }
-
-      await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), (uint)keycode, 1u);
-      await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), (uint)keycode, 0u);
-
-      if (requiresShift)
-      {
-        await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), shiftKeycode, 0u);
-      }
-    }
-
-    if (skipped > 0)
-    {
-      _logger.LogWarning("Skipped {Count} characters with no US-layout evdev mapping while typing.", skipped);
-    }
-
-    if (skipped == text.Length && text.Length > 0)
-    {
-      throw new InvalidOperationException("No characters could be typed; none had a US-layout evdev key mapping.");
-    }
   }
 
   public override async Task PressChordAsync(KeyChord chord, CancellationToken cancellationToken = default)
@@ -326,28 +263,6 @@ internal sealed class WaylandBackend(
     }
   }
 
-  /// <summary>The RemoteDesktop portal offers no cursor position query; always null on Wayland.</summary>
-  public override Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default) =>
-    Task.FromResult<ScreenPoint?>(null);
-
-  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default)
-  {
-    bool hasSession;
-
-    lock (_stateSync)
-    {
-      hasSession = _sessionHandle is not null;
-    }
-
-    return Task.FromResult(new PermissionStatus(
-      BackendName,
-      PermissionState.Unknown,
-      hasSession ? PermissionState.Granted : PermissionState.NotGranted,
-      hasSession
-        ? "A RemoteDesktop session is active, so input is granted. Screenshot permission state is unknown until a capture is attempted."
-        : "Input requires a RemoteDesktop portal session (a permission prompt on first use). Screenshot permission state is unknown until a capture is attempted."));
-  }
-
   public override async Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default)
   {
     PermissionState input;
@@ -384,6 +299,90 @@ internal sealed class WaylandBackend(
       "Portal grants persist per application. The RemoteDesktop restore token was saved on success; the Screenshot portal has no restore token and may re-prompt depending on the portal implementation.");
   }
 
+  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
+  {
+    await MovePointerAsync(point, cancellationToken);
+
+    if (verticalClicks == 0 && horizontalClicks == 0)
+    {
+      return;
+    }
+
+    var session = await EnsureSessionAsync(cancellationToken);
+    var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
+
+    // Portal axis 0 = vertical (positive = up), axis 1 = horizontal (positive = right).
+    if (verticalClicks != 0)
+    {
+      await proxy.NotifyPointerAxisDiscreteAsync(session, EmptyOptions(), 0u, verticalClicks);
+    }
+
+    if (horizontalClicks != 0)
+    {
+      await proxy.NotifyPointerAxisDiscreteAsync(session, EmptyOptions(), 1u, horizontalClicks);
+    }
+  }
+
+  public override async Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
+  {
+    var session = await EnsureSessionAsync(cancellationToken);
+    var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
+
+    await proxy.NotifyPointerButtonAsync(
+      session,
+      EmptyOptions(),
+      (uint)LinuxKeycodes.GetButtonCode(button),
+      pressed ? 1u : 0u);
+  }
+
+  public override async Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
+  {
+    var session = await EnsureSessionAsync(cancellationToken);
+    var proxy = _portal.CreateProxy<IXdgRemoteDesktop>(XdgPortalConnection.PortalObjectPath);
+    var skipped = 0;
+
+    foreach (var character in text)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+
+      if (character is '\r')
+      {
+        continue;
+      }
+
+      if (!LinuxKeycodes.TryGetCharacter(character, out var keycode, out var requiresShift))
+      {
+        skipped++;
+        continue;
+      }
+
+      var shiftKeycode = (uint)LinuxKeycodes.KEY_LEFTSHIFT;
+
+      if (requiresShift)
+      {
+        await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), shiftKeycode, 1u);
+      }
+
+      await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), (uint)keycode, 1u);
+      await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), (uint)keycode, 0u);
+
+      if (requiresShift)
+      {
+        await proxy.NotifyKeyboardKeycodeAsync(session, EmptyOptions(), shiftKeycode, 0u);
+      }
+    }
+
+    if (skipped > 0)
+    {
+      _logger.LogWarning("Skipped {Count} characters with no US-layout evdev mapping while typing.", skipped);
+    }
+
+    if (skipped == text.Length && text.Length > 0)
+    {
+      throw new InvalidOperationException("No characters could be typed; none had a US-layout evdev key mapping.");
+    }
+  }
+
   protected override void DisposeCore()
   {
     _portal.Dispose();
@@ -414,52 +413,15 @@ internal sealed class WaylandBackend(
     return new DisplayLayout(displays);
   }
 
-  private static DisplayLayout SingleDisplayLayout(int width, int height) =>
-    new(
-    [
-      new DisplayInfo
-      {
-        Index = 0,
-        Name = "Wayland screen",
-        X = 0,
-        Y = 0,
-        Width = width,
-        Height = height,
-        IsPrimary = true,
-        Scale = 1,
-      },
-    ]);
+  private static Dictionary<string, object> EmptyOptions() => new();
 
-  private static PortalStream PickStream(List<PortalStream> streams, ScreenPoint native)
-  {
-    var containing = streams.FirstOrDefault(s =>
-      native.X >= s.X && native.X < s.X + s.Width &&
-      native.Y >= s.Y && native.Y < s.Y + s.Height);
-
-    if (containing.Width > 0 && containing.Height > 0)
+  private static object? GetValue(IDictionary<string, object>? dict, string key)  {
+    if (dict is null)
     {
-      return containing;
+      return null;
     }
 
-    // Out of bounds: use the nearest stream so clamped edge coordinates still land somewhere sane.
-    var best = streams[0];
-    var bestDistance = long.MaxValue;
-
-    foreach (var stream in streams)
-    {
-      var nearestX = Math.Clamp(native.X, stream.X, stream.X + stream.Width - 1);
-      var nearestY = Math.Clamp(native.Y, stream.Y, stream.Y + stream.Height - 1);
-      var distance = ((long)(native.X - nearestX) * (native.X - nearestX)) +
-                     ((long)(native.Y - nearestY) * (native.Y - nearestY));
-
-      if (distance < bestDistance)
-      {
-        bestDistance = distance;
-        best = stream;
-      }
-    }
-
-    return best;
+    return dict.TryGetValue(key, out var value) ? value : null;
   }
 
   private static List<PortalStream> ParseStreams(IDictionary<string, object> results)
@@ -513,15 +475,36 @@ internal sealed class WaylandBackend(
     return streams;
   }
 
-  private static Dictionary<string, object> EmptyOptions() => new();
+  private static PortalStream PickStream(List<PortalStream> streams, ScreenPoint native)
+  {
+    var containing = streams.FirstOrDefault(s =>
+      native.X >= s.X && native.X < s.X + s.Width &&
+      native.Y >= s.Y && native.Y < s.Y + s.Height);
 
-  private static object? GetValue(IDictionary<string, object>? dict, string key)  {
-    if (dict is null)
+    if (containing.Width > 0 && containing.Height > 0)
     {
-      return null;
+      return containing;
     }
 
-    return dict.TryGetValue(key, out var value) ? value : null;
+    // Out of bounds: use the nearest stream so clamped edge coordinates still land somewhere sane.
+    var best = streams[0];
+    var bestDistance = long.MaxValue;
+
+    foreach (var stream in streams)
+    {
+      var nearestX = Math.Clamp(native.X, stream.X, stream.X + stream.Width - 1);
+      var nearestY = Math.Clamp(native.Y, stream.Y, stream.Y + stream.Height - 1);
+      var distance = ((long)(native.X - nearestX) * (native.X - nearestX)) +
+                     ((long)(native.Y - nearestY) * (native.Y - nearestY));
+
+      if (distance < bestDistance)
+      {
+        bestDistance = distance;
+        best = stream;
+      }
+    }
+
+    return best;
   }
 
   private static (int X, int Y) ReadIntPair(IDictionary<string, object>? props, string key)
@@ -553,18 +536,21 @@ internal sealed class WaylandBackend(
     return values.Count >= 2 ? (values[0], values[1]) : (0, 0);
   }
 
-  private List<PortalStream> GetActiveStreams()
-  {
-    lock (_stateSync)
-    {
-      if (_sessionHandle is null || _streams is not { Count: > 0 })
+  private static DisplayLayout SingleDisplayLayout(int width, int height) =>
+    new(
+    [
+      new DisplayInfo
       {
-        throw new InvalidOperationException("No RemoteDesktop streams are available.");
-      }
-
-      return _streams;
-    }
-  }
+        Index = 0,
+        Name = "Wayland screen",
+        X = 0,
+        Y = 0,
+        Width = width,
+        Height = height,
+        IsPrimary = true,
+        Scale = 1,
+      },
+    ]);
 
   /// <summary>Establishes (or returns the existing) RemoteDesktop session, prompting once.</summary>
   private async Task<ObjectPath> EnsureSessionAsync(CancellationToken cancellationToken)
@@ -715,6 +701,21 @@ internal sealed class WaylandBackend(
     _logger.LogInformation("RemoteDesktop session established with {StreamCount} stream(s).", streams.Count);
   }
 
+  private List<PortalStream> GetActiveStreams()
+  {
+    lock (_stateSync)
+    {
+      if (_sessionHandle is null || _streams is not { Count: > 0 })
+      {
+        throw new InvalidOperationException("No RemoteDesktop streams are available.");
+      }
+
+      return _streams;
+    }
+  }
+
+  private readonly record struct PortalStream(uint Id, int X, int Y, int Width, int Height);
+
   /// <summary>Thrown when SelectDevices rejects a persisted restore token (worth a tokenless retry).</summary>
   private sealed class RestoreTokenRejectedException : InvalidOperationException
   {
@@ -723,6 +724,4 @@ internal sealed class WaylandBackend(
     {
     }
   }
-
-  private readonly record struct PortalStream(uint Id, int X, int Y, int Width, int Height);
 }

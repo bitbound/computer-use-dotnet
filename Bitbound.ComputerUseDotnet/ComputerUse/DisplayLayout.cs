@@ -29,26 +29,19 @@ public sealed class DisplayLayout
 
   public IReadOnlyList<DisplayInfo> Displays { get; }
 
+  /// <summary>Height of the union of all displays in logical pixels.</summary>
+  public int Height { get; }
+
   /// <summary>Native X of the normalized origin.</summary>
   public int OriginX { get; }
 
   /// <summary>Native Y of the normalized origin.</summary>
   public int OriginY { get; }
-
-  /// <summary>Width of the union of all displays in logical pixels.</summary>
-  public int Width { get; }
-
-  /// <summary>Height of the union of all displays in logical pixels.</summary>
-  public int Height { get; }
-
   public DisplayInfo? Primary =>
     Displays.FirstOrDefault(d => d.IsPrimary) ?? Displays.FirstOrDefault();
 
-  /// <summary>Converts a virtual-screen (normalized) point into native layout coordinates.</summary>
-  public ScreenPoint ToNative(ScreenPoint point) => new(point.X + OriginX, point.Y + OriginY);
-
-  /// <summary>Converts native layout coordinates into virtual-screen (normalized) space.</summary>
-  public ScreenPoint FromNative(ScreenPoint point) => new(point.X - OriginX, point.Y - OriginY);
+  /// <summary>Width of the union of all displays in logical pixels.</summary>
+  public int Width { get; }
 
   /// <summary>Clamps a normalized point to the virtual screen bounds.</summary>
   public ScreenPoint Clamp(ScreenPoint point) => new(
@@ -62,4 +55,10 @@ public sealed class DisplayLayout
       normalizedPoint.X < d.Right - OriginX &&
       normalizedPoint.Y >= d.Y - OriginY &&
       normalizedPoint.Y < d.Bottom - OriginY);
+
+  /// <summary>Converts native layout coordinates into virtual-screen (normalized) space.</summary>
+  public ScreenPoint FromNative(ScreenPoint point) => new(point.X - OriginX, point.Y - OriginY);
+
+  /// <summary>Converts a virtual-screen (normalized) point into native layout coordinates.</summary>
+  public ScreenPoint ToNative(ScreenPoint point) => new(point.X + OriginX, point.Y + OriginY);
 }

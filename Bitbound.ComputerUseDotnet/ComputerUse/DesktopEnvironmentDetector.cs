@@ -6,9 +6,6 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse;
 /// </summary>
 public static class DesktopEnvironmentDetector
 {
-  /// <summary>Detects the Linux session type using the real environment.</summary>
-  public static DesktopEnvironmentType DetectLinuxSession(Func<string, string?>? getEnvironmentVariable = null) =>
-    Detect(getEnvironmentVariable ?? Environment.GetEnvironmentVariable);
 
   /// <summary>Detects the desktop environment across all operating systems.</summary>
   public static DesktopEnvironmentType DetectCurrent()
@@ -30,6 +27,10 @@ public static class DesktopEnvironmentDetector
 
     return DesktopEnvironmentType.Unknown;
   }
+
+  /// <summary>Detects the Linux session type using the real environment.</summary>
+  public static DesktopEnvironmentType DetectLinuxSession(Func<string, string?>? getEnvironmentVariable = null) =>
+    Detect(getEnvironmentVariable ?? Environment.GetEnvironmentVariable);
 
   private static DesktopEnvironmentType Detect(Func<string, string?> getEnvironmentVariable)
   {

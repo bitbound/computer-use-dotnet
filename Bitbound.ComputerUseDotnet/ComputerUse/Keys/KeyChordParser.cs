@@ -6,23 +6,6 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse;
 /// </summary>
 public static class KeyChordParser
 {
-  private static readonly Dictionary<string, ModifierKey> Modifiers = new(StringComparer.OrdinalIgnoreCase)
-  {
-    ["shift"] = ModifierKey.Shift,
-    ["shiftkey"] = ModifierKey.Shift,
-    ["control"] = ModifierKey.Control,
-    ["ctrl"] = ModifierKey.Control,
-    ["ctl"] = ModifierKey.Control,
-    ["alt"] = ModifierKey.Alt,
-    ["option"] = ModifierKey.Alt,
-    ["opt"] = ModifierKey.Alt,
-    ["meta"] = ModifierKey.Meta,
-    ["cmd"] = ModifierKey.Meta,
-    ["command"] = ModifierKey.Meta,
-    ["super"] = ModifierKey.Meta,
-    ["win"] = ModifierKey.Meta,
-    ["windows"] = ModifierKey.Meta,
-  };
 
   /// <summary>Canonical names for non-character keys accepted by <see cref="Parse"/>.</summary>
   public static readonly IReadOnlyCollection<string> KnownKeyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -61,6 +44,23 @@ public static class KeyChordParser
     ["bracketright"] = "rightbracket",
     ["openbracket"] = "leftbracket",
     ["closebracket"] = "rightbracket",
+  };
+  private static readonly Dictionary<string, ModifierKey> Modifiers = new(StringComparer.OrdinalIgnoreCase)
+  {
+    ["shift"] = ModifierKey.Shift,
+    ["shiftkey"] = ModifierKey.Shift,
+    ["control"] = ModifierKey.Control,
+    ["ctrl"] = ModifierKey.Control,
+    ["ctl"] = ModifierKey.Control,
+    ["alt"] = ModifierKey.Alt,
+    ["option"] = ModifierKey.Alt,
+    ["opt"] = ModifierKey.Alt,
+    ["meta"] = ModifierKey.Meta,
+    ["cmd"] = ModifierKey.Meta,
+    ["command"] = ModifierKey.Meta,
+    ["super"] = ModifierKey.Meta,
+    ["win"] = ModifierKey.Meta,
+    ["windows"] = ModifierKey.Meta,
   };
 
   /// <summary>

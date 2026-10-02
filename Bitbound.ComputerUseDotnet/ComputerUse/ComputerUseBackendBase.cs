@@ -12,12 +12,11 @@ public abstract class ComputerUseBackendBase : IComputerUseBackend
   private bool _disposed;
 
   public abstract string BackendName { get; }
-
   public abstract DesktopEnvironmentType EnvironmentType { get; }
 
-  public abstract Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default);
-
   public abstract Task<SKBitmap> CaptureVirtualScreenAsync(CancellationToken cancellationToken = default);
+
+  public abstract Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default);
 
   public virtual async Task ClickAsync(
     ScreenPoint point,
@@ -35,6 +34,18 @@ public abstract class ComputerUseBackendBase : IComputerUseBackend
       await SetPointerButtonAsync(button, false, cancellationToken);
       await Task.Delay(ButtonDelay, cancellationToken);
     }
+  }
+
+  public void Dispose()
+  {
+    if (_disposed)
+    {
+      return;
+    }
+
+    _disposed = true;
+    DisposeCore();
+    GC.SuppressFinalize(this);
   }
 
   public virtual async Task DragAsync(
@@ -63,33 +74,21 @@ public abstract class ComputerUseBackendBase : IComputerUseBackend
     await SetPointerButtonAsync(button, false, cancellationToken);
   }
 
+  public abstract Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default);
+
+  public abstract Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default);
+
   public abstract Task MovePointerAsync(ScreenPoint point, CancellationToken cancellationToken = default);
-
-  public abstract Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default);
-
-  public abstract Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default);
-
-  public abstract Task TypeTextAsync(string text, CancellationToken cancellationToken = default);
 
   public abstract Task PressChordAsync(KeyChord chord, CancellationToken cancellationToken = default);
 
-  public abstract Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default);
-
-  public abstract Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default);
-
   public abstract Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default);
 
-  public void Dispose()
-  {
-    if (_disposed)
-    {
-      return;
-    }
+  public abstract Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default);
 
-    _disposed = true;
-    DisposeCore();
-    GC.SuppressFinalize(this);
-  }
+  public abstract Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default);
+
+  public abstract Task TypeTextAsync(string text, CancellationToken cancellationToken = default);
 
   protected abstract void DisposeCore();
 }

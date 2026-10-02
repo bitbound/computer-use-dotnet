@@ -4,6 +4,14 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse;
 
 public sealed partial class ComputerUseTools
 {
+  [McpServerTool(Name = "check_permissions")]
+  [Description("Checks screen-capture and input-simulation permission state without prompting. On macOS this maps to Screen Recording / Accessibility; on Linux Wayland it reports whether a RemoteDesktop portal session is active.")]
+  public async Task<string> CheckPermissions()
+  {
+    var status = await _backend.CheckPermissionsAsync();
+    return Describe(status);
+  }
+
   [McpServerTool(Name = "get_desktop_info")]
   [Description("Reports the desktop environment, display layout (indexes, bounds, scale), backend in use, and current permission states. Call this before taking actions to understand the coordinate space.")]
   public async Task<string> GetDesktopInfo()
@@ -34,14 +42,6 @@ public sealed partial class ComputerUseTools
     }
 
     return builder.ToString().TrimEnd();
-  }
-
-  [McpServerTool(Name = "check_permissions")]
-  [Description("Checks screen-capture and input-simulation permission state without prompting. On macOS this maps to Screen Recording / Accessibility; on Linux Wayland it reports whether a RemoteDesktop portal session is active.")]
-  public async Task<string> CheckPermissions()
-  {
-    var status = await _backend.CheckPermissionsAsync();
-    return Describe(status);
   }
 
   [McpServerTool(Name = "request_permissions")]

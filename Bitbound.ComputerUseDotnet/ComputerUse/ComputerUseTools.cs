@@ -20,8 +20,6 @@ public sealed partial class ComputerUseTools
     _logger = logger;
   }
 
-  private static ScreenPoint ToPoint(int x, int y) => new(x, y);
-
   private static MouseButton ParseMouseButton(string button) => button.Trim().ToLowerInvariant() switch
   {
     "left" => MouseButton.Left,
@@ -31,4 +29,6 @@ public sealed partial class ComputerUseTools
     "side" or "forward" => MouseButton.Side,
     _ => throw new ArgumentException($"Unknown mouse button '{button}'. Use left, right, middle, extra, or side."),
   };
+
+  private static ScreenPoint ToPoint(int x, int y) => new(x, y);
 }

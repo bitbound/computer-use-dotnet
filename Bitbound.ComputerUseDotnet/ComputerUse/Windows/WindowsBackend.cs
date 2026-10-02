@@ -20,65 +20,7 @@ internal sealed class WindowsBackend(ILogger<WindowsBackend> logger) : ComputerU
   }
 
   public override string BackendName => "Windows (GDI BitBlt + SendInput)";
-
   public override DesktopEnvironmentType EnvironmentType => DesktopEnvironmentType.Windows;
-
-  public override unsafe Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default)
-  {
-    EnsureDpiAwareness();
-
-    var displays = new List<DisplayInfo>();
-    var index = 0;
-
-    Win32.MonitorEnumProc callback = (hMonitor, _, lprcMonitor, _) =>
-    {
-      var info = new Win32.MONITORINFOEX
-      {
-        Size = (uint)Marshal.SizeOf<Win32.MONITORINFOEX>(),
-      };
-
-      if (!Win32.GetMonitorInfo(hMonitor, ref info))
-      {
-        return true;
-      }
-
-      var rect = info.Monitor;
-      var scale = 1.0;
-
-      try
-      {
-        if (Win32.GetDpiForMonitor(hMonitor, 0, out var dpiX, out _) == 0)
-        {
-          scale = dpiX / 96.0;
-        }
-      }
-      catch (DllNotFoundException)
-      {
-        _logger.LogDebug("shcore.dll not available; assuming scale 1.0 for monitor {Monitor}.", info.DeviceName);
-      }
-
-      displays.Add(new DisplayInfo
-      {
-        Index = index++,
-        Name = info.DeviceName,
-        X = rect.Left,
-        Y = rect.Top,
-        Width = rect.Right - rect.Left,
-        Height = rect.Bottom - rect.Top,
-        IsPrimary = (info.Flags & Win32.MONITORINFOF_PRIMARY) != 0,
-        Scale = scale,
-      });
-
-      return true;
-    };
-
-    if (!Win32.EnumDisplayMonitors(nint.Zero, null, callback, nint.Zero) || displays.Count == 0)
-    {
-      throw new InvalidOperationException("EnumDisplayMonitors returned no displays; is a desktop session active?");
-    }
-
-    return Task.FromResult(new DisplayLayout(displays));
-  }
 
   public override unsafe Task<SKBitmap> CaptureVirtualScreenAsync(CancellationToken cancellationToken = default)
   {
@@ -178,6 +120,82 @@ internal sealed class WindowsBackend(ILogger<WindowsBackend> logger) : ComputerU
     }
   }
 
+  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default) =>
+    Task.FromResult(new PermissionStatus(
+      BackendName,
+      PermissionState.NotRequired,
+      PermissionState.NotRequired,
+      "Windows does not require special permissions for GDI capture or SendInput in a normal interactive session."));
+
+  public override Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default)
+  {
+    if (!Win32.GetCursorPos(out var point))
+    {
+      return Task.FromResult<ScreenPoint?>(null);
+    }
+
+    // GetCursorPos returns native virtual-screen coordinates; re-normalize to the union origin.
+    var layout = GetDisplayLayoutAsync().GetAwaiter().GetResult();
+    return Task.FromResult<ScreenPoint?>(layout.FromNative(new ScreenPoint(point.X, point.Y)));
+  }
+
+  public override unsafe Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default)
+  {
+    EnsureDpiAwareness();
+
+    var displays = new List<DisplayInfo>();
+    var index = 0;
+
+    Win32.MonitorEnumProc callback = (hMonitor, _, lprcMonitor, _) =>
+    {
+      var info = new Win32.MONITORINFOEX
+      {
+        Size = (uint)Marshal.SizeOf<Win32.MONITORINFOEX>(),
+      };
+
+      if (!Win32.GetMonitorInfo(hMonitor, ref info))
+      {
+        return true;
+      }
+
+      var rect = info.Monitor;
+      var scale = 1.0;
+
+      try
+      {
+        if (Win32.GetDpiForMonitor(hMonitor, 0, out var dpiX, out _) == 0)
+        {
+          scale = dpiX / 96.0;
+        }
+      }
+      catch (DllNotFoundException)
+      {
+        _logger.LogDebug("shcore.dll not available; assuming scale 1.0 for monitor {Monitor}.", info.DeviceName);
+      }
+
+      displays.Add(new DisplayInfo
+      {
+        Index = index++,
+        Name = info.DeviceName,
+        X = rect.Left,
+        Y = rect.Top,
+        Width = rect.Right - rect.Left,
+        Height = rect.Bottom - rect.Top,
+        IsPrimary = (info.Flags & Win32.MONITORINFOF_PRIMARY) != 0,
+        Scale = scale,
+      });
+
+      return true;
+    };
+
+    if (!Win32.EnumDisplayMonitors(nint.Zero, null, callback, nint.Zero) || displays.Count == 0)
+    {
+      throw new InvalidOperationException("EnumDisplayMonitors returned no displays; is a desktop session active?");
+    }
+
+    return Task.FromResult(new DisplayLayout(displays));
+  }
+
   public override Task MovePointerAsync(ScreenPoint point, CancellationToken cancellationToken = default)
   {
     // Normalized coordinates are relative to the virtual-screen origin, which is
@@ -190,72 +208,6 @@ internal sealed class WindowsBackend(ILogger<WindowsBackend> logger) : ComputerU
     }
 
     return Task.CompletedTask;
-  }
-
-  public override Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
-  {
-    var (downFlag, upFlag, mouseData) = button switch
-    {
-      MouseButton.Left => (Win32.MOUSEEVENTF_LEFTDOWN, Win32.MOUSEEVENTF_LEFTUP, 0u),
-      MouseButton.Right => (Win32.MOUSEEVENTF_RIGHTDOWN, Win32.MOUSEEVENTF_RIGHTUP, 0u),
-      MouseButton.Middle => (Win32.MOUSEEVENTF_MIDDLEDOWN, Win32.MOUSEEVENTF_MIDDLEUP, 0u),
-      MouseButton.Extra => (Win32.MOUSEEVENTF_XDOWN, Win32.MOUSEEVENTF_XUP, 1u),
-      MouseButton.Side => (Win32.MOUSEEVENTF_XDOWN, Win32.MOUSEEVENTF_XUP, 2u),
-      _ => throw new ArgumentOutOfRangeException(nameof(button), button, null),
-    };
-
-    var input = new Win32.INPUT
-    {
-      Type = Win32.INPUT_MOUSE,
-      Union = new Win32.InputUnion
-      {
-        Mouse = new Win32.MOUSEINPUT
-        {
-          MouseData = mouseData,
-          Flags = pressed ? downFlag : upFlag,
-        },
-      },
-    };
-
-    if (Win32.SendInputs(input) != 1)
-    {
-      throw new InvalidOperationException($"SendInput(mouse) failed with Win32 error {Marshal.GetLastWin32Error()}.");
-    }
-
-    return Task.CompletedTask;
-  }
-
-  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
-  {
-    await MovePointerAsync(point, cancellationToken);
-
-    if (verticalClicks != 0)
-    {
-      SendWheel(Win32.MOUSEEVENTF_WHEEL, verticalClicks * Win32.WHEEL_DELTA);
-    }
-
-    if (horizontalClicks != 0)
-    {
-      SendWheel(Win32.MOUSEEVENTF_HWHEEL, horizontalClicks * Win32.WHEEL_DELTA);
-    }
-  }
-
-  public override async Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
-  {
-    foreach (var character in text)
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-
-      if (character is '\n' or '\r')
-      {
-        await SendKeyAsync(WindowsVirtualKeys.VK_RETURN, extended: false, pressed: true, cancellationToken);
-        await SendKeyAsync(WindowsVirtualKeys.VK_RETURN, extended: false, pressed: false, cancellationToken);
-        continue;
-      }
-
-      await SendUnicodeCharAsync(character, pressed: true, cancellationToken);
-      await SendUnicodeCharAsync(character, pressed: false, cancellationToken);
-    }
   }
 
   public override async Task PressChordAsync(KeyChord chord, CancellationToken cancellationToken = default)
@@ -299,34 +251,78 @@ internal sealed class WindowsBackend(ILogger<WindowsBackend> logger) : ComputerU
     }
   }
 
-  public override Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default)
-  {
-    if (!Win32.GetCursorPos(out var point))
-    {
-      return Task.FromResult<ScreenPoint?>(null);
-    }
-
-    // GetCursorPos returns native virtual-screen coordinates; re-normalize to the union origin.
-    var layout = GetDisplayLayoutAsync().GetAwaiter().GetResult();
-    return Task.FromResult<ScreenPoint?>(layout.FromNative(new ScreenPoint(point.X, point.Y)));
-  }
-
-  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default) =>
-    Task.FromResult(new PermissionStatus(
-      BackendName,
-      PermissionState.NotRequired,
-      PermissionState.NotRequired,
-      "Windows does not require special permissions for GDI capture or SendInput in a normal interactive session."));
-
   public override Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default) =>
     CheckPermissionsAsync(cancellationToken);
+
+  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
+  {
+    await MovePointerAsync(point, cancellationToken);
+
+    if (verticalClicks != 0)
+    {
+      SendWheel(Win32.MOUSEEVENTF_WHEEL, verticalClicks * Win32.WHEEL_DELTA);
+    }
+
+    if (horizontalClicks != 0)
+    {
+      SendWheel(Win32.MOUSEEVENTF_HWHEEL, horizontalClicks * Win32.WHEEL_DELTA);
+    }
+  }
+
+  public override Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
+  {
+    var (downFlag, upFlag, mouseData) = button switch
+    {
+      MouseButton.Left => (Win32.MOUSEEVENTF_LEFTDOWN, Win32.MOUSEEVENTF_LEFTUP, 0u),
+      MouseButton.Right => (Win32.MOUSEEVENTF_RIGHTDOWN, Win32.MOUSEEVENTF_RIGHTUP, 0u),
+      MouseButton.Middle => (Win32.MOUSEEVENTF_MIDDLEDOWN, Win32.MOUSEEVENTF_MIDDLEUP, 0u),
+      MouseButton.Extra => (Win32.MOUSEEVENTF_XDOWN, Win32.MOUSEEVENTF_XUP, 1u),
+      MouseButton.Side => (Win32.MOUSEEVENTF_XDOWN, Win32.MOUSEEVENTF_XUP, 2u),
+      _ => throw new ArgumentOutOfRangeException(nameof(button), button, null),
+    };
+
+    var input = new Win32.INPUT
+    {
+      Type = Win32.INPUT_MOUSE,
+      Union = new Win32.InputUnion
+      {
+        Mouse = new Win32.MOUSEINPUT
+        {
+          MouseData = mouseData,
+          Flags = pressed ? downFlag : upFlag,
+        },
+      },
+    };
+
+    if (Win32.SendInputs(input) != 1)
+    {
+      throw new InvalidOperationException($"SendInput(mouse) failed with Win32 error {Marshal.GetLastWin32Error()}.");
+    }
+
+    return Task.CompletedTask;
+  }
+
+  public override async Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
+  {
+    foreach (var character in text)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+
+      if (character is '\n' or '\r')
+      {
+        await SendKeyAsync(WindowsVirtualKeys.VK_RETURN, extended: false, pressed: true, cancellationToken);
+        await SendKeyAsync(WindowsVirtualKeys.VK_RETURN, extended: false, pressed: false, cancellationToken);
+        continue;
+      }
+
+      await SendUnicodeCharAsync(character, pressed: true, cancellationToken);
+      await SendUnicodeCharAsync(character, pressed: false, cancellationToken);
+    }
+  }
 
   protected override void DisposeCore()
   {
   }
-
-  private static ScreenPoint ToNative(ScreenPoint point) =>
-    new(point.X + Win32.GetSystemMetrics(Win32.SM_XVIRTUALSCREEN), point.Y + Win32.GetSystemMetrics(Win32.SM_YVIRTUALSCREEN));
 
   private static void EnsureDpiAwareness()
   {
@@ -362,6 +358,9 @@ internal sealed class WindowsBackend(ILogger<WindowsBackend> logger) : ComputerU
       throw new InvalidOperationException($"SendInput(wheel) failed with Win32 error {Marshal.GetLastWin32Error()}.");
     }
   }
+
+  private static ScreenPoint ToNative(ScreenPoint point) =>
+    new(point.X + Win32.GetSystemMetrics(Win32.SM_XVIRTUALSCREEN), point.Y + Win32.GetSystemMetrics(Win32.SM_YVIRTUALSCREEN));
 
   private Task SendKeyAsync(ushort virtualKey, bool extended, bool pressed, CancellationToken cancellationToken)
   {

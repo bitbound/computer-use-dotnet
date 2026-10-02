@@ -6,6 +6,13 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse;
 /// </summary>
 public static class X11Keysyms
 {
+  private static readonly Dictionary<ModifierKey, string> ModifierKeysyms = new()
+  {
+    [ModifierKey.Shift] = "Shift_L",
+    [ModifierKey.Control] = "Control_L",
+    [ModifierKey.Alt] = "Alt_L",
+    [ModifierKey.Meta] = "Super_L",
+  };
   private static readonly Dictionary<string, string> NamedKeys = new(StringComparer.Ordinal)
   {
     ["enter"] = "Return",
@@ -67,17 +74,9 @@ public static class X11Keysyms
     ["f24"] = "F24",
   };
 
-  private static readonly Dictionary<ModifierKey, string> ModifierKeysyms = new()
-  {
-    [ModifierKey.Shift] = "Shift_L",
-    [ModifierKey.Control] = "Control_L",
-    [ModifierKey.Alt] = "Alt_L",
-    [ModifierKey.Meta] = "Super_L",
-  };
-
-  /// <summary>Maps a normalized key name to its X11 keysym name.</summary>
-  public static bool TryGetKeysymName(string normalizedName, out string keysymName) =>
-    NamedKeys.TryGetValue(normalizedName, out keysymName!);
+  /// <summary>Whether the character requires holding Shift to produce on a US keyboard.</summary>
+  public static bool CharacterRequiresShift(char character) =>
+    char.IsUpper(character) || "!@#$%^&*()_+{}|:\"<>?~".Contains(character);
 
   /// <summary>The keysym name for a chord modifier.</summary>
   public static string GetModifierKeysymName(ModifierKey modifier) => ModifierKeysyms[modifier];
@@ -134,7 +133,7 @@ public static class X11Keysyms
     return keysymName.Length > 0;
   }
 
-  /// <summary>Whether the character requires holding Shift to produce on a US keyboard.</summary>
-  public static bool CharacterRequiresShift(char character) =>
-    char.IsUpper(character) || "!@#$%^&*()_+{}|:\"<>?~".Contains(character);
+  /// <summary>Maps a normalized key name to its X11 keysym name.</summary>
+  public static bool TryGetKeysymName(string normalizedName, out string keysymName) =>
+    NamedKeys.TryGetValue(normalizedName, out keysymName!);
 }

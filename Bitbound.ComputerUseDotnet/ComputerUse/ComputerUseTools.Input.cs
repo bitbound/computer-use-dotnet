@@ -4,20 +4,6 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse;
 
 public sealed partial class ComputerUseTools
 {
-  [McpServerTool(Name = "move_mouse")]
-  [Description("Moves the mouse pointer to an absolute virtual-screen coordinate (pixel space of a full take_screenshot image).")]
-  public async Task<string> MoveMouse(
-      [Description("X coordinate in virtual-screen pixels.")]
-        int x,
-      [Description("Y coordinate in virtual-screen pixels.")]
-        int y)
-  {
-    var layout = await _backend.GetDisplayLayoutAsync();
-    var point = layout.Clamp(ToPoint(x, y));
-    await _backend.MovePointerAsync(point);
-    return $"Pointer moved to ({point.X}, {point.Y}).";
-  }
-
   [McpServerTool(Name = "click")]
   [Description("Moves the pointer to a virtual-screen coordinate and clicks a mouse button.")]
   public async Task<string> Click(
@@ -61,6 +47,45 @@ public sealed partial class ComputerUseTools
     return $"Dragged {button} from ({from.X}, {from.Y}) to ({to.X}, {to.Y}).";
   }
 
+  [McpServerTool(Name = "get_cursor_position")]
+  [Description("Returns the current pointer position in virtual-screen pixel coordinates, if the platform supports querying it.")]
+  public async Task<string> GetCursorPosition()
+  {
+    var position = await _backend.GetCursorPositionAsync();
+
+    return position is null
+      ? "Cursor position query is not supported on this platform."
+      : $"Cursor is at ({position.Value.X}, {position.Value.Y}).";
+  }
+
+  [McpServerTool(Name = "move_mouse")]
+  [Description("Moves the mouse pointer to an absolute virtual-screen coordinate (pixel space of a full take_screenshot image).")]
+  public async Task<string> MoveMouse(
+      [Description("X coordinate in virtual-screen pixels.")]
+        int x,
+      [Description("Y coordinate in virtual-screen pixels.")]
+        int y)
+  {
+    var layout = await _backend.GetDisplayLayoutAsync();
+    var point = layout.Clamp(ToPoint(x, y));
+    await _backend.MovePointerAsync(point);
+    return $"Pointer moved to ({point.X}, {point.Y}).";
+  }
+
+  [McpServerTool(Name = "press_key")]
+  [Description(
+    "Presses a key or key chord. Tokens are joined with '+': modifiers (ctrl, alt, shift, meta/cmd/win/super) " +
+    "plus one target key name or single character. Examples: enter, tab, escape, f5, up, " +
+    "ctrl+alt+delete, cmd+space, ctrl+shift+t. Name 'space' types a space bar press.")]
+  public async Task<string> PressKey(
+      [Description("The key chord to press, e.g. 'ctrl+c' or 'enter'.")]
+        string keys)
+  {
+    var chord = KeyChordParser.Parse(keys);
+    await _backend.PressChordAsync(chord);
+    return $"Pressed {chord}.";
+  }
+
   [McpServerTool(Name = "scroll")]
   [Description("Moves the pointer to a virtual-screen coordinate and scrolls the mouse wheel. Positive scroll_y scrolls up, positive scroll_x scrolls right.")]
   public async Task<string> Scroll(
@@ -89,30 +114,5 @@ public sealed partial class ComputerUseTools
     await _backend.TypeTextAsync(text);
     _logger.LogInformation("Typed {Length} characters.", text.Length);
     return $"Typed {text.Length} character(s).";
-  }
-
-  [McpServerTool(Name = "press_key")]
-  [Description(
-    "Presses a key or key chord. Tokens are joined with '+': modifiers (ctrl, alt, shift, meta/cmd/win/super) " +
-    "plus one target key name or single character. Examples: enter, tab, escape, f5, up, " +
-    "ctrl+alt+delete, cmd+space, ctrl+shift+t. Name 'space' types a space bar press.")]
-  public async Task<string> PressKey(
-      [Description("The key chord to press, e.g. 'ctrl+c' or 'enter'.")]
-        string keys)
-  {
-    var chord = KeyChordParser.Parse(keys);
-    await _backend.PressChordAsync(chord);
-    return $"Pressed {chord}.";
-  }
-
-  [McpServerTool(Name = "get_cursor_position")]
-  [Description("Returns the current pointer position in virtual-screen pixel coordinates, if the platform supports querying it.")]
-  public async Task<string> GetCursorPosition()
-  {
-    var position = await _backend.GetCursorPositionAsync();
-
-    return position is null
-      ? "Cursor position query is not supported on this platform."
-      : $"Cursor is at ({position.Value.X}, {position.Value.Y}).";
   }
 }

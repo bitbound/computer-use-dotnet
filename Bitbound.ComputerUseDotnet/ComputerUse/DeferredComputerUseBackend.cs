@@ -11,48 +11,21 @@ public sealed class DeferredComputerUseBackend(IFileSystem fileSystem, ILoggerFa
 {
   private readonly SemaphoreSlim _gate = new(1, 1);
   private readonly ILogger _logger = loggerFactory.CreateLogger<DeferredComputerUseBackend>();
+
   private IComputerUseBackend? _backend;
   private string? _startupError;
 
   public string BackendName => Ensure().BackendName;
-
   public DesktopEnvironmentType EnvironmentType => Ensure().EnvironmentType;
-
-  public async Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default) =>
-    await Ensure().GetDisplayLayoutAsync(cancellationToken);
 
   public async Task<SKBitmap> CaptureVirtualScreenAsync(CancellationToken cancellationToken = default) =>
     await Ensure().CaptureVirtualScreenAsync(cancellationToken);
 
-  public async Task ClickAsync(ScreenPoint point, MouseButton button, int clickCount, CancellationToken cancellationToken = default) =>
-    await Ensure().ClickAsync(point, button, clickCount, cancellationToken);
-
-  public async Task DragAsync(ScreenPoint start, ScreenPoint end, MouseButton button, int steps, CancellationToken cancellationToken = default) =>
-    await Ensure().DragAsync(start, end, button, steps, cancellationToken);
-
-  public async Task MovePointerAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
-    await Ensure().MovePointerAsync(point, cancellationToken);
-
-  public async Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default) =>
-    await Ensure().SetPointerButtonAsync(button, pressed, cancellationToken);
-
-  public async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default) =>
-    await Ensure().ScrollAsync(point, verticalClicks, horizontalClicks, cancellationToken);
-
-  public async Task TypeTextAsync(string text, CancellationToken cancellationToken = default) =>
-    await Ensure().TypeTextAsync(text, cancellationToken);
-
-  public async Task PressChordAsync(KeyChord chord, CancellationToken cancellationToken = default) =>
-    await Ensure().PressChordAsync(chord, cancellationToken);
-
-  public async Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default) =>
-    await Ensure().GetCursorPositionAsync(cancellationToken);
-
   public async Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default) =>
     await Ensure().CheckPermissionsAsync(cancellationToken);
 
-  public async Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default) =>
-    await Ensure().RequestPermissionsAsync(cancellationToken);
+  public async Task ClickAsync(ScreenPoint point, MouseButton button, int clickCount, CancellationToken cancellationToken = default) =>
+    await Ensure().ClickAsync(point, button, clickCount, cancellationToken);
 
   public void Dispose()
   {
@@ -60,6 +33,33 @@ public sealed class DeferredComputerUseBackend(IFileSystem fileSystem, ILoggerFa
     _gate.Dispose();
     GC.SuppressFinalize(this);
   }
+
+  public async Task DragAsync(ScreenPoint start, ScreenPoint end, MouseButton button, int steps, CancellationToken cancellationToken = default) =>
+    await Ensure().DragAsync(start, end, button, steps, cancellationToken);
+
+  public async Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default) =>
+    await Ensure().GetCursorPositionAsync(cancellationToken);
+
+  public async Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default) =>
+    await Ensure().GetDisplayLayoutAsync(cancellationToken);
+
+  public async Task MovePointerAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
+    await Ensure().MovePointerAsync(point, cancellationToken);
+
+  public async Task PressChordAsync(KeyChord chord, CancellationToken cancellationToken = default) =>
+    await Ensure().PressChordAsync(chord, cancellationToken);
+
+  public async Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default) =>
+    await Ensure().RequestPermissionsAsync(cancellationToken);
+
+  public async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default) =>
+    await Ensure().ScrollAsync(point, verticalClicks, horizontalClicks, cancellationToken);
+
+  public async Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default) =>
+    await Ensure().SetPointerButtonAsync(button, pressed, cancellationToken);
+
+  public async Task TypeTextAsync(string text, CancellationToken cancellationToken = default) =>
+    await Ensure().TypeTextAsync(text, cancellationToken);
 
   private IComputerUseBackend Ensure()
   {

@@ -9,19 +9,19 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse.Linux;
 /// </summary>
 internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBackendBase
 {
-  private const int ZPixmap = 2;
   private const nuint AllPlanes = 0xFFFFFFFF;
+  private const int ZPixmap = 2;
 
   private static readonly Lock _sync = new();
 
   private readonly ILogger<X11Backend> _logger = logger;
+
   private nint _display;
+  private bool _disposed;
   private nint _root;
   private uint _shiftKeycode;
-  private bool _disposed;
 
   public override string BackendName => "Linux X11 (XGetImage capture + XTEST input)";
-
   public override DesktopEnvironmentType EnvironmentType => DesktopEnvironmentType.X11;
 
   public override unsafe Task<SKBitmap> CaptureVirtualScreenAsync(CancellationToken cancellationToken = default)
@@ -106,6 +106,41 @@ internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBacken
     }
   }
 
+  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default)
+  {
+    lock (_sync)
+    {
+      EnsureDisplay();
+
+      var xtestAvailable = LibXtst.XTestQueryExtension(_display, out _, out _, out _, out _);
+
+      return Task.FromResult(new PermissionStatus(
+        BackendName,
+        PermissionState.Granted,
+        xtestAvailable ? PermissionState.Granted : PermissionState.NotGranted,
+        xtestAvailable
+          ? "X11 clients are authorized by the X server itself (same-user/local connections); the XTEST extension is available."
+          : "The XTEST extension is not available on this X server, so input simulation will fail."));
+    }
+  }
+
+  public override Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default)
+  {
+    lock (_sync)
+    {
+      EnsureDisplay();
+
+      if (LibX11.XQueryPointer(_display, _root, out _, out _, out var rootX, out var rootY, out _, out _, out _) == 0)
+      {
+        return Task.FromResult<ScreenPoint?>(null);
+      }
+
+      var layout = BuildLayout();
+
+      return Task.FromResult<ScreenPoint?>(new ScreenPoint(rootX - layout.OriginX, rootY - layout.OriginY));
+    }
+  }
+
   public override Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default)
   {
     lock (_sync)
@@ -124,94 +159,6 @@ internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBacken
       EnsureDisplay();
       LibXtst.XTestFakeMotionEvent(_display, -1, native.X, native.Y, LibX11.CurrentTime);
       LibX11.XFlush(_display);
-    }
-
-    return Task.CompletedTask;
-  }
-
-  public override Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
-  {
-    var xButton = ToXButton(button);
-
-    lock (_sync)
-    {
-      EnsureDisplay();
-      LibXtst.XTestFakeButtonEvent(_display, xButton, pressed, LibX11.CurrentTime);
-      LibX11.XFlush(_display);
-    }
-
-    return Task.CompletedTask;
-  }
-
-  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
-  {
-    await MovePointerAsync(point, cancellationToken);
-
-    lock (_sync)
-    {
-      EnsureDisplay();
-
-      // X old-style wheel: button 4=up, 5=down, 6=left, 7=right; one press/release per click.
-      FakeButtonRepeats(4, verticalClicks > 0 ? verticalClicks : 0);
-      FakeButtonRepeats(5, verticalClicks < 0 ? -verticalClicks : 0);
-      FakeButtonRepeats(6, horizontalClicks < 0 ? -horizontalClicks : 0);
-      FakeButtonRepeats(7, horizontalClicks > 0 ? horizontalClicks : 0);
-
-      LibX11.XFlush(_display);
-    }
-  }
-
-  public override Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
-  {
-    var skipped = 0;
-
-    lock (_sync)
-    {
-      EnsureDisplay();
-
-      foreach (var character in text)
-      {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (character is '\r')
-        {
-          continue;
-        }
-
-        if (!X11Keysyms.TryGetCharacterKeysymName(character, out var keysymName) ||
-            !TryMapKeysymName(keysymName, out var keycode))
-        {
-          skipped++;
-          continue;
-        }
-
-        var shifted = X11Keysyms.CharacterRequiresShift(character);
-
-        if (shifted)
-        {
-          FakeKey(_shiftKeycode, true);
-        }
-
-        FakeKey(keycode, true);
-        FakeKey(keycode, false);
-
-        if (shifted)
-        {
-          FakeKey(_shiftKeycode, false);
-        }
-      }
-
-      LibX11.XFlush(_display);
-    }
-
-    if (skipped > 0)
-    {
-      _logger.LogWarning("Skipped {Count} characters while typing because no X keysym mapping was available.", skipped);
-    }
-
-    if (skipped == text.Length && text.Length > 0)
-    {
-      throw new InvalidOperationException("No characters could be typed; the X server has no keysym mappings for the requested text.");
     }
 
     return Task.CompletedTask;
@@ -285,43 +232,96 @@ internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBacken
     return Task.CompletedTask;
   }
 
-  public override Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default)
-  {
-    lock (_sync)
-    {
-      EnsureDisplay();
-
-      if (LibX11.XQueryPointer(_display, _root, out _, out _, out var rootX, out var rootY, out _, out _, out _) == 0)
-      {
-        return Task.FromResult<ScreenPoint?>(null);
-      }
-
-      var layout = BuildLayout();
-
-      return Task.FromResult<ScreenPoint?>(new ScreenPoint(rootX - layout.OriginX, rootY - layout.OriginY));
-    }
-  }
-
-  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default)
-  {
-    lock (_sync)
-    {
-      EnsureDisplay();
-
-      var xtestAvailable = LibXtst.XTestQueryExtension(_display, out _, out _, out _, out _);
-
-      return Task.FromResult(new PermissionStatus(
-        BackendName,
-        PermissionState.Granted,
-        xtestAvailable ? PermissionState.Granted : PermissionState.NotGranted,
-        xtestAvailable
-          ? "X11 clients are authorized by the X server itself (same-user/local connections); the XTEST extension is available."
-          : "The XTEST extension is not available on this X server, so input simulation will fail."));
-    }
-  }
-
   public override Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default) =>
     CheckPermissionsAsync(cancellationToken);
+
+  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
+  {
+    await MovePointerAsync(point, cancellationToken);
+
+    lock (_sync)
+    {
+      EnsureDisplay();
+
+      // X old-style wheel: button 4=up, 5=down, 6=left, 7=right; one press/release per click.
+      FakeButtonRepeats(4, verticalClicks > 0 ? verticalClicks : 0);
+      FakeButtonRepeats(5, verticalClicks < 0 ? -verticalClicks : 0);
+      FakeButtonRepeats(6, horizontalClicks < 0 ? -horizontalClicks : 0);
+      FakeButtonRepeats(7, horizontalClicks > 0 ? horizontalClicks : 0);
+
+      LibX11.XFlush(_display);
+    }
+  }
+
+  public override Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
+  {
+    var xButton = ToXButton(button);
+
+    lock (_sync)
+    {
+      EnsureDisplay();
+      LibXtst.XTestFakeButtonEvent(_display, xButton, pressed, LibX11.CurrentTime);
+      LibX11.XFlush(_display);
+    }
+
+    return Task.CompletedTask;
+  }
+
+  public override Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
+  {
+    var skipped = 0;
+
+    lock (_sync)
+    {
+      EnsureDisplay();
+
+      foreach (var character in text)
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (character is '\r')
+        {
+          continue;
+        }
+
+        if (!X11Keysyms.TryGetCharacterKeysymName(character, out var keysymName) ||
+            !TryMapKeysymName(keysymName, out var keycode))
+        {
+          skipped++;
+          continue;
+        }
+
+        var shifted = X11Keysyms.CharacterRequiresShift(character);
+
+        if (shifted)
+        {
+          FakeKey(_shiftKeycode, true);
+        }
+
+        FakeKey(keycode, true);
+        FakeKey(keycode, false);
+
+        if (shifted)
+        {
+          FakeKey(_shiftKeycode, false);
+        }
+      }
+
+      LibX11.XFlush(_display);
+    }
+
+    if (skipped > 0)
+    {
+      _logger.LogWarning("Skipped {Count} characters while typing because no X keysym mapping was available.", skipped);
+    }
+
+    if (skipped == text.Length && text.Length > 0)
+    {
+      throw new InvalidOperationException("No characters could be typed; the X server has no keysym mappings for the requested text.");
+    }
+
+    return Task.CompletedTask;
+  }
 
   protected override void DisposeCore()
   {
@@ -342,6 +342,12 @@ internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBacken
     }
   }
 
+  private static ScreenPoint PointToNative(ScreenPoint point)
+  {
+    // The X11 root window always starts at (0,0), so normalized coordinates are native coordinates.
+    return point;
+  }
+
   private static uint ToXButton(MouseButton button) =>
     button switch
     {
@@ -353,50 +359,27 @@ internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBacken
       _ => throw new ArgumentOutOfRangeException(nameof(button), button, null),
     };
 
-  private static ScreenPoint PointToNative(ScreenPoint point)
+  private DisplayLayout BuildLayout()
   {
-    // The X11 root window always starts at (0,0), so normalized coordinates are native coordinates.
-    return point;
-  }
+    var screen = LibX11.XDefaultScreenOfDisplay(_display);
+    var width = LibX11.XWidthOfScreen(screen);
+    var height = LibX11.XHeightOfScreen(screen);
 
-  private void FakeButtonRepeats(uint button, int count)
-  {
-    for (var i = 0; i < count; i++)
-    {
-      LibXtst.XTestFakeButtonEvent(_display, button, true, LibX11.CurrentTime);
-      LibXtst.XTestFakeButtonEvent(_display, button, false, LibX11.CurrentTime);
-    }
-  }
-
-  private void FakeKey(uint keycode, bool pressed) =>
-    LibXtst.XTestFakeKeyEvent(_display, keycode, pressed, LibX11.CurrentTime);
-
-  private bool TryMapKeysymName(string keysymName, out uint keycode)
-  {
-    var keysym = LibX11.XStringToKeysym(keysymName);
-    keycode = keysym == nint.Zero ? 0 : LibX11.XKeysymToKeycode(_display, keysym);
-
-    return keycode != 0;
-  }
-
-  private uint PressKeysymName(string keysymName)
-  {
-    var keysym = LibX11.XStringToKeysym(keysymName);
-
-    if (keysym == nint.Zero)
-    {
-      throw new InvalidOperationException($"Unknown X keysym name '{keysymName}'.");
-    }
-
-    var keycode = LibX11.XKeysymToKeycode(_display, keysym);
-
-    if (keycode == 0)
-    {
-      throw new InvalidOperationException($"X keysym '{keysymName}' has no keycode on this keyboard layout.");
-    }
-
-    LibXtst.XTestFakeKeyEvent(_display, keycode, true, LibX11.CurrentTime);
-    return keycode;
+    // With Xinerama (single protocol screen spanning all monitors) the root window covers the whole desktop.
+    return new DisplayLayout(
+    [
+      new DisplayInfo
+      {
+        Index = 0,
+        Name = "X11 root",
+        X = 0,
+        Y = 0,
+        Width = width,
+        Height = height,
+        IsPrimary = true,
+        Scale = 1,
+      },
+    ]);
   }
 
   private void EnsureDisplay()
@@ -429,26 +412,43 @@ internal sealed class X11Backend(ILogger<X11Backend> logger) : ComputerUseBacken
     }
   }
 
-  private DisplayLayout BuildLayout()
+  private void FakeButtonRepeats(uint button, int count)
   {
-    var screen = LibX11.XDefaultScreenOfDisplay(_display);
-    var width = LibX11.XWidthOfScreen(screen);
-    var height = LibX11.XHeightOfScreen(screen);
+    for (var i = 0; i < count; i++)
+    {
+      LibXtst.XTestFakeButtonEvent(_display, button, true, LibX11.CurrentTime);
+      LibXtst.XTestFakeButtonEvent(_display, button, false, LibX11.CurrentTime);
+    }
+  }
 
-    // With Xinerama (single protocol screen spanning all monitors) the root window covers the whole desktop.
-    return new DisplayLayout(
-    [
-      new DisplayInfo
-      {
-        Index = 0,
-        Name = "X11 root",
-        X = 0,
-        Y = 0,
-        Width = width,
-        Height = height,
-        IsPrimary = true,
-        Scale = 1,
-      },
-    ]);
+  private void FakeKey(uint keycode, bool pressed) =>
+    LibXtst.XTestFakeKeyEvent(_display, keycode, pressed, LibX11.CurrentTime);
+
+  private uint PressKeysymName(string keysymName)
+  {
+    var keysym = LibX11.XStringToKeysym(keysymName);
+
+    if (keysym == nint.Zero)
+    {
+      throw new InvalidOperationException($"Unknown X keysym name '{keysymName}'.");
+    }
+
+    var keycode = LibX11.XKeysymToKeycode(_display, keysym);
+
+    if (keycode == 0)
+    {
+      throw new InvalidOperationException($"X keysym '{keysymName}' has no keycode on this keyboard layout.");
+    }
+
+    LibXtst.XTestFakeKeyEvent(_display, keycode, true, LibX11.CurrentTime);
+    return keycode;
+  }
+
+  private bool TryMapKeysymName(string keysymName, out uint keycode)
+  {
+    var keysym = LibX11.XStringToKeysym(keysymName);
+    keycode = keysym == nint.Zero ? 0 : LibX11.XKeysymToKeycode(_display, keysym);
+
+    return keycode != 0;
   }
 }

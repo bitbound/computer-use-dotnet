@@ -11,11 +11,10 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
 {
   private const uint MaxDisplays = 64;
 
-  private readonly ILogger<MacBackend> _logger = logger;
   private readonly nint _eventSource = MacBindings.CGEventSourceCreate((uint)MacBindings.kCGEventSourceStateHIDSystemState);
+  private readonly ILogger<MacBackend> _logger = logger;
 
   public override string BackendName => "macOS (CoreGraphics capture + CGEvent input)";
-
   public override DesktopEnvironmentType EnvironmentType => DesktopEnvironmentType.MacOS;
 
   public override unsafe Task<SKBitmap> CaptureVirtualScreenAsync(CancellationToken cancellationToken = default)
@@ -81,6 +80,42 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
     return Task.FromResult(composite);
   }
 
+  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default)
+  {
+    var input = SafeCall(MacBindings.AXIsProcessTrusted) ? PermissionState.Granted : PermissionState.NotGranted;
+    var capture = PreflightScreenCapture();
+
+    return Task.FromResult(new PermissionStatus(
+      BackendName,
+      capture,
+      input,
+      "Screen Recording gates capture; Accessibility (AXIsProcessTrusted) gates input. Call request_permissions to show the prompts, then relaunch this MCP server after granting."));
+  }
+
+  public override async Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default)
+  {
+    var locationEvent = MacBindings.CGEventCreate(nint.Zero);
+
+    if (locationEvent == nint.Zero)
+    {
+      return null;
+    }
+
+    try
+    {
+      var location = MacBindings.CGEventGetLocation(locationEvent);
+      var layout = await GetDisplayLayoutAsync(cancellationToken);
+
+      return new ScreenPoint(
+        (int)Math.Round(location.X) - layout.OriginX,
+        (int)Math.Round(location.Y) - layout.OriginY);
+    }
+    finally
+    {
+      MacBindings.CFRelease(locationEvent);
+    }
+  }
+
   public override Task<DisplayLayout> GetDisplayLayoutAsync(CancellationToken cancellationToken = default) =>
     Task.FromResult(BuildLayout());
 
@@ -90,94 +125,6 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
     MacBindings.CGWarpMouseCursorPosition(new MacBindings.CGPoint(native.X, native.Y));
     PostMouse(MacBindings.kCGEventMouseMoved, MacBindings.kCGMouseButtonLeft, native);
     return Task.CompletedTask;
-  }
-
-  public override Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
-  {
-    var location = CurrentNativeCursor();
-    var (type, cgButton) = button switch
-    {
-      MouseButton.Left => (pressed ? MacBindings.kCGEventLeftMouseDown : MacBindings.kCGEventLeftMouseUp, MacBindings.kCGMouseButtonLeft),
-      MouseButton.Right => (pressed ? MacBindings.kCGEventRightMouseDown : MacBindings.kCGEventRightMouseUp, MacBindings.kCGMouseButtonRight),
-      MouseButton.Middle => (pressed ? MacBindings.kCGEventOtherMouseDown : MacBindings.kCGEventOtherMouseUp, 2u),
-      MouseButton.Extra => (pressed ? MacBindings.kCGEventOtherMouseDown : MacBindings.kCGEventOtherMouseUp, 3u),
-      MouseButton.Side => (pressed ? MacBindings.kCGEventOtherMouseDown : MacBindings.kCGEventOtherMouseUp, 4u),
-      _ => throw new ArgumentOutOfRangeException(nameof(button), button, null),
-    };
-
-    var eventRef = MacBindings.CGEventCreateMouseEvent(_eventSource, type, location, cgButton);
-
-    if (eventRef == nint.Zero)
-    {
-      throw new InvalidOperationException("CGEventCreateMouseEvent returned nil.");
-    }
-
-    try
-    {
-      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
-    }
-    finally
-    {
-      MacBindings.CFRelease(eventRef);
-    }
-
-    return Task.CompletedTask;
-  }
-
-  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
-  {
-    await MovePointerAsync(point, cancellationToken);
-
-    if (verticalClicks == 0 && horizontalClicks == 0)
-    {
-      return;
-    }
-
-    var eventRef = MacBindings.CGEventCreateScrollWheelEvent(
-      _eventSource,
-      MacBindings.kCGScrollEventUnitLine,
-      2,
-      verticalClicks,
-      horizontalClicks);
-
-    if (eventRef == nint.Zero)
-    {
-      throw new InvalidOperationException("CGEventCreateScrollWheelEvent returned nil.");
-    }
-
-    try
-    {
-      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
-    }
-    finally
-    {
-      MacBindings.CFRelease(eventRef);
-    }
-  }
-
-  public override async Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
-  {
-    foreach (var character in text)
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-
-      if (character is '\r')
-      {
-        continue;
-      }
-
-      if (character is '\n')
-      {
-        PostKeyboardKey(MacVirtualKeys.kVK_Return, flags: 0, keyDown: true);
-        PostKeyboardKey(MacVirtualKeys.kVK_Return, flags: 0, keyDown: false);
-        continue;
-      }
-
-      // Unicode injection handles any character regardless of the active keyboard layout.
-      PostUnicodeChar(character);
-    }
-
-    await Task.CompletedTask;
   }
 
   public override Task PressChordAsync(KeyChord chord, CancellationToken cancellationToken = default)
@@ -242,42 +189,6 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
     return Task.CompletedTask;
   }
 
-  public override async Task<ScreenPoint?> GetCursorPositionAsync(CancellationToken cancellationToken = default)
-  {
-    var locationEvent = MacBindings.CGEventCreate(nint.Zero);
-
-    if (locationEvent == nint.Zero)
-    {
-      return null;
-    }
-
-    try
-    {
-      var location = MacBindings.CGEventGetLocation(locationEvent);
-      var layout = await GetDisplayLayoutAsync(cancellationToken);
-
-      return new ScreenPoint(
-        (int)Math.Round(location.X) - layout.OriginX,
-        (int)Math.Round(location.Y) - layout.OriginY);
-    }
-    finally
-    {
-      MacBindings.CFRelease(locationEvent);
-    }
-  }
-
-  public override Task<PermissionStatus> CheckPermissionsAsync(CancellationToken cancellationToken = default)
-  {
-    var input = SafeCall(MacBindings.AXIsProcessTrusted) ? PermissionState.Granted : PermissionState.NotGranted;
-    var capture = PreflightScreenCapture();
-
-    return Task.FromResult(new PermissionStatus(
-      BackendName,
-      capture,
-      input,
-      "Screen Recording gates capture; Accessibility (AXIsProcessTrusted) gates input. Call request_permissions to show the prompts, then relaunch this MCP server after granting."));
-  }
-
   public override Task<PermissionStatus> RequestPermissionsAsync(CancellationToken cancellationToken = default)
   {
     var captureRequested = SafeCall(MacBindings.CGRequestScreenCaptureAccess);
@@ -309,43 +220,99 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
       "Prompts were shown if the system allowed them. macOS usually requires relaunching this MCP server for grants to take effect; a terminal/CLI host may be added to TCC in place of this executable."));
   }
 
+  public override async Task ScrollAsync(ScreenPoint point, int verticalClicks, int horizontalClicks, CancellationToken cancellationToken = default)
+  {
+    await MovePointerAsync(point, cancellationToken);
+
+    if (verticalClicks == 0 && horizontalClicks == 0)
+    {
+      return;
+    }
+
+    var eventRef = MacBindings.CGEventCreateScrollWheelEvent(
+      _eventSource,
+      MacBindings.kCGScrollEventUnitLine,
+      2,
+      verticalClicks,
+      horizontalClicks);
+
+    if (eventRef == nint.Zero)
+    {
+      throw new InvalidOperationException("CGEventCreateScrollWheelEvent returned nil.");
+    }
+
+    try
+    {
+      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
+    }
+    finally
+    {
+      MacBindings.CFRelease(eventRef);
+    }
+  }
+
+  public override Task SetPointerButtonAsync(MouseButton button, bool pressed, CancellationToken cancellationToken = default)
+  {
+    var location = CurrentNativeCursor();
+    var (type, cgButton) = button switch
+    {
+      MouseButton.Left => (pressed ? MacBindings.kCGEventLeftMouseDown : MacBindings.kCGEventLeftMouseUp, MacBindings.kCGMouseButtonLeft),
+      MouseButton.Right => (pressed ? MacBindings.kCGEventRightMouseDown : MacBindings.kCGEventRightMouseUp, MacBindings.kCGMouseButtonRight),
+      MouseButton.Middle => (pressed ? MacBindings.kCGEventOtherMouseDown : MacBindings.kCGEventOtherMouseUp, 2u),
+      MouseButton.Extra => (pressed ? MacBindings.kCGEventOtherMouseDown : MacBindings.kCGEventOtherMouseUp, 3u),
+      MouseButton.Side => (pressed ? MacBindings.kCGEventOtherMouseDown : MacBindings.kCGEventOtherMouseUp, 4u),
+      _ => throw new ArgumentOutOfRangeException(nameof(button), button, null),
+    };
+
+    var eventRef = MacBindings.CGEventCreateMouseEvent(_eventSource, type, location, cgButton);
+
+    if (eventRef == nint.Zero)
+    {
+      throw new InvalidOperationException("CGEventCreateMouseEvent returned nil.");
+    }
+
+    try
+    {
+      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
+    }
+    finally
+    {
+      MacBindings.CFRelease(eventRef);
+    }
+
+    return Task.CompletedTask;
+  }
+
+  public override async Task TypeTextAsync(string text, CancellationToken cancellationToken = default)
+  {
+    foreach (var character in text)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+
+      if (character is '\r')
+      {
+        continue;
+      }
+
+      if (character is '\n')
+      {
+        PostKeyboardKey(MacVirtualKeys.kVK_Return, flags: 0, keyDown: true);
+        PostKeyboardKey(MacVirtualKeys.kVK_Return, flags: 0, keyDown: false);
+        continue;
+      }
+
+      // Unicode injection handles any character regardless of the active keyboard layout.
+      PostUnicodeChar(character);
+    }
+
+    await Task.CompletedTask;
+  }
+
   protected override void DisposeCore()
   {
     if (_eventSource != nint.Zero)
     {
       MacBindings.CFRelease(_eventSource);
-    }
-  }
-
-  private static bool SafeCall(Func<bool> call)
-  {
-    try
-    {
-      return call();
-    }
-    catch (EntryPointNotFoundException)
-    {
-      return false;
-    }
-    catch (DllNotFoundException)
-    {
-      return false;
-    }
-  }
-
-  private static PermissionState PreflightScreenCapture()
-  {
-    try
-    {
-      return MacBindings.CGPreflightScreenCaptureAccess() ? PermissionState.Granted : PermissionState.NotGranted;
-    }
-    catch (EntryPointNotFoundException)
-    {
-      return PermissionState.Unknown;
-    }
-    catch (DllNotFoundException)
-    {
-      return PermissionState.Unknown;
     }
   }
 
@@ -413,118 +380,35 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
     }
   }
 
-  private MacBindings.CGPoint PointToNative(ScreenPoint point)
+  private static PermissionState PreflightScreenCapture()
   {
-    var layout = GetDisplayLayoutAsync().GetAwaiter().GetResult();
-    var native = layout.ToNative(point);
-    return new MacBindings.CGPoint(native.X, native.Y);
-  }
-
-  private MacBindings.CGPoint CurrentNativeCursor()
-  {
-    var locationEvent = MacBindings.CGEventCreate(nint.Zero);
-
-    if (locationEvent == nint.Zero)
-    {
-      return new MacBindings.CGPoint(0, 0);
-    }
-
     try
     {
-      return MacBindings.CGEventGetLocation(locationEvent);
+      return MacBindings.CGPreflightScreenCaptureAccess() ? PermissionState.Granted : PermissionState.NotGranted;
     }
-    finally
+    catch (EntryPointNotFoundException)
     {
-      MacBindings.CFRelease(locationEvent);
+      return PermissionState.Unknown;
+    }
+    catch (DllNotFoundException)
+    {
+      return PermissionState.Unknown;
     }
   }
 
-  private void PostMouse(uint type, uint button, MacBindings.CGPoint location)
+  private static bool SafeCall(Func<bool> call)
   {
-    var eventRef = MacBindings.CGEventCreateMouseEvent(_eventSource, type, location, button);
-
-    if (eventRef == nint.Zero)
-    {
-      return;
-    }
-
     try
     {
-      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
+      return call();
     }
-    finally
+    catch (EntryPointNotFoundException)
     {
-      MacBindings.CFRelease(eventRef);
+      return false;
     }
-  }
-
-  private void PostKeyboardKey(ushort virtualKey, ulong flags, bool keyDown)
-  {
-    var eventRef = MacBindings.CGEventCreateKeyboardEvent(_eventSource, virtualKey, keyDown);
-
-    if (eventRef == nint.Zero)
+    catch (DllNotFoundException)
     {
-      throw new InvalidOperationException("CGEventCreateKeyboardEvent returned nil; is Accessibility permission granted?");
-    }
-
-    try
-    {
-      if (flags != 0)
-      {
-        MacBindings.CGEventSetFlags(eventRef, flags);
-      }
-
-      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
-    }
-    finally
-    {
-      MacBindings.CFRelease(eventRef);
-    }
-  }
-
-  private void PostUnicodeChar(char character, ulong flags = 0)
-  {
-    var eventRef = MacBindings.CGEventCreateKeyboardEvent(_eventSource, 0, keyDown: true);
-
-    if (eventRef == nint.Zero)
-    {
-      throw new InvalidOperationException("CGEventCreateKeyboardEvent returned nil; is Accessibility permission granted?");
-    }
-
-    var upRef = MacBindings.CGEventCreateKeyboardEvent(_eventSource, 0, keyDown: false);
-
-    try
-    {
-      var characters = character.ToString();
-      MacBindings.CGEventKeyboardSetUnicodeString(eventRef, 1, characters);
-
-      if (flags != 0)
-      {
-        MacBindings.CGEventSetFlags(eventRef, flags);
-      }
-
-      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
-
-      if (upRef != nint.Zero)
-      {
-        MacBindings.CGEventKeyboardSetUnicodeString(upRef, 1, characters);
-
-        if (flags != 0)
-        {
-          MacBindings.CGEventSetFlags(upRef, flags);
-        }
-
-        MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, upRef);
-      }
-    }
-    finally
-    {
-      MacBindings.CFRelease(eventRef);
-
-      if (upRef != nint.Zero)
-      {
-        MacBindings.CFRelease(upRef);
-      }
+      return false;
     }
   }
 
@@ -581,5 +465,120 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
     }
 
     return new DisplayLayout(displays);
+  }
+
+  private MacBindings.CGPoint CurrentNativeCursor()
+  {
+    var locationEvent = MacBindings.CGEventCreate(nint.Zero);
+
+    if (locationEvent == nint.Zero)
+    {
+      return new MacBindings.CGPoint(0, 0);
+    }
+
+    try
+    {
+      return MacBindings.CGEventGetLocation(locationEvent);
+    }
+    finally
+    {
+      MacBindings.CFRelease(locationEvent);
+    }
+  }
+
+  private MacBindings.CGPoint PointToNative(ScreenPoint point)
+  {
+    var layout = GetDisplayLayoutAsync().GetAwaiter().GetResult();
+    var native = layout.ToNative(point);
+    return new MacBindings.CGPoint(native.X, native.Y);
+  }
+
+  private void PostKeyboardKey(ushort virtualKey, ulong flags, bool keyDown)
+  {
+    var eventRef = MacBindings.CGEventCreateKeyboardEvent(_eventSource, virtualKey, keyDown);
+
+    if (eventRef == nint.Zero)
+    {
+      throw new InvalidOperationException("CGEventCreateKeyboardEvent returned nil; is Accessibility permission granted?");
+    }
+
+    try
+    {
+      if (flags != 0)
+      {
+        MacBindings.CGEventSetFlags(eventRef, flags);
+      }
+
+      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
+    }
+    finally
+    {
+      MacBindings.CFRelease(eventRef);
+    }
+  }
+
+  private void PostMouse(uint type, uint button, MacBindings.CGPoint location)
+  {
+    var eventRef = MacBindings.CGEventCreateMouseEvent(_eventSource, type, location, button);
+
+    if (eventRef == nint.Zero)
+    {
+      return;
+    }
+
+    try
+    {
+      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
+    }
+    finally
+    {
+      MacBindings.CFRelease(eventRef);
+    }
+  }
+
+  private void PostUnicodeChar(char character, ulong flags = 0)
+  {
+    var eventRef = MacBindings.CGEventCreateKeyboardEvent(_eventSource, 0, keyDown: true);
+
+    if (eventRef == nint.Zero)
+    {
+      throw new InvalidOperationException("CGEventCreateKeyboardEvent returned nil; is Accessibility permission granted?");
+    }
+
+    var upRef = MacBindings.CGEventCreateKeyboardEvent(_eventSource, 0, keyDown: false);
+
+    try
+    {
+      var characters = character.ToString();
+      MacBindings.CGEventKeyboardSetUnicodeString(eventRef, 1, characters);
+
+      if (flags != 0)
+      {
+        MacBindings.CGEventSetFlags(eventRef, flags);
+      }
+
+      MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, eventRef);
+
+      if (upRef != nint.Zero)
+      {
+        MacBindings.CGEventKeyboardSetUnicodeString(upRef, 1, characters);
+
+        if (flags != 0)
+        {
+          MacBindings.CGEventSetFlags(upRef, flags);
+        }
+
+        MacBindings.CGEventPost(MacBindings.kCGHIDEventTap, upRef);
+      }
+    }
+    finally
+    {
+      MacBindings.CFRelease(eventRef);
+
+      if (upRef != nint.Zero)
+      {
+        MacBindings.CFRelease(upRef);
+      }
+    }
   }
 }

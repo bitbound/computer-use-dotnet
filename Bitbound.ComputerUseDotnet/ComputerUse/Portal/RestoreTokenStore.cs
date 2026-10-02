@@ -12,8 +12,8 @@ internal sealed class RestoreTokenStore(IFileSystem fileSystem, ILogger<RestoreT
   private const string ConfigDirectoryName = "computer-use-dotnet";
   private const string TokenFileName = "wayland-remotedesktop-restore-token";
 
-  private readonly ILogger<RestoreTokenStore> _logger = logger;
   private readonly IFileSystem _fileSystem = fileSystem;
+  private readonly ILogger<RestoreTokenStore> _logger = logger;
   private readonly Lock _sync = new();
 
   private string? _cachedToken;
@@ -35,40 +35,25 @@ internal sealed class RestoreTokenStore(IFileSystem fileSystem, ILogger<RestoreT
     }
   }
 
-  /// <summary>Returns the saved restore token, or null when none exists.</summary>
-  public string? TryLoad()
+  /// <summary>Discards a stale or rejected token.</summary>
+  public void Clear()
   {
     lock (_sync)
     {
-      if (_cachedToken is not null)
-      {
-        return _cachedToken;
-      }
+      _cachedToken = null;
 
       var path = FilePath;
 
-      if (!_fileSystem.FileExists(path))
+      if (_fileSystem.FileExists(path))
       {
-        return null;
-      }
-
-      try
-      {
-        var token = _fileSystem.ReadAllText(path).Trim();
-
-        if (token.Length == 0)
+        try
         {
-          return null;
+          _fileSystem.DeleteFile(path);
         }
-
-        _cachedToken = token;
-        _logger.LogDebug("Loaded RemoteDesktop restore token from {Path}.", path);
-        return token;
-      }
-      catch (Exception ex)
-      {
-        _logger.LogWarning(ex, "Failed to read the restore token at {Path}.", path);
-        return null;
+        catch (Exception ex)
+        {
+          _logger.LogWarning(ex, "Failed to delete the restore token file at {Path}.", path);
+        }
       }
     }
   }
@@ -109,25 +94,40 @@ internal sealed class RestoreTokenStore(IFileSystem fileSystem, ILogger<RestoreT
     }
   }
 
-  /// <summary>Discards a stale or rejected token.</summary>
-  public void Clear()
+  /// <summary>Returns the saved restore token, or null when none exists.</summary>
+  public string? TryLoad()
   {
     lock (_sync)
     {
-      _cachedToken = null;
+      if (_cachedToken is not null)
+      {
+        return _cachedToken;
+      }
 
       var path = FilePath;
 
-      if (_fileSystem.FileExists(path))
+      if (!_fileSystem.FileExists(path))
       {
-        try
+        return null;
+      }
+
+      try
+      {
+        var token = _fileSystem.ReadAllText(path).Trim();
+
+        if (token.Length == 0)
         {
-          _fileSystem.DeleteFile(path);
+          return null;
         }
-        catch (Exception ex)
-        {
-          _logger.LogWarning(ex, "Failed to delete the restore token file at {Path}.", path);
-        }
+
+        _cachedToken = token;
+        _logger.LogDebug("Loaded RemoteDesktop restore token from {Path}.", path);
+        return token;
+      }
+      catch (Exception ex)
+      {
+        _logger.LogWarning(ex, "Failed to read the restore token at {Path}.", path);
+        return null;
       }
     }
   }

@@ -1,31 +1,50 @@
-# Builds the MCP server as a local NuGet tool package and prints the install command.
-# Usage: .\publish-local.ps1 [-Version 0.1.0-local]
-param(
-  [string]$Version = "0.1.0-local"
-)
+$VersionPrefix = "1.0.0"
+$LocalSourceDir = $env:NUGET_LOCAL_SOURCE
+$RepoDir = $PSScriptRoot
 
-$ErrorActionPreference = "Stop"
-
-$solution = Join-Path $PSScriptRoot "ComputerUseMcp.slnx"
-$output = Join-Path $PSScriptRoot "artifacts"
-
-if (Test-Path $output) {
-  Remove-Item $output -Recurse -Force
+if (-Not (Test-Path -Path $RepoDir)) {
+    throw "Repository directory not found: $RepoDir"
 }
 
-dotnet pack $solution --configuration Release -p:PackageVersion=$Version -o $output
+$PackageId = "Bitbound.ComputerUseDotnet"
+$VersionPattern = "^" + [regex]::Escape($PackageId) + '\.(\d+\.\d+\.\d+)$'
 
-if ($LASTEXITCODE -ne 0) {
-  throw "dotnet pack failed with exit code $LASTEXITCODE"
+$highest = $null
+if (Test-Path -Path $LocalSourceDir) {
+    foreach ($package in Get-ChildItem -Path $LocalSourceDir -Filter "$PackageId.*.nupkg" -File) {
+        if ($package.BaseName -notmatch $VersionPattern) {
+            continue
+        }
+
+        $candidate = [Version]$Matches[1]
+        if ($null -eq $highest -or $candidate -gt $highest) {
+            $highest = $candidate
+        }
+    }
 }
 
-$package = Get-ChildItem $output -Filter "Bitbound.ComputerUseDotnet.*.nupkg" | Select-Object -First 1
+if ($null -ne $highest) {
+    $VersionPrefix = "{0}.{1}.{2}" -f $highest.Major, $highest.Minor, ($highest.Build + 1)
+    Write-Host "Found $PackageId $highest in $LocalSourceDir, publishing $($VersionPrefix)"
+}
+
+$ProjectDir = Join-Path $RepoDir "Bitbound.ComputerUseDotnet"
+dotnet pack -c Release -p:VersionPrefix=$VersionPrefix -o $LocalSourceDir $ProjectDir
+$PackExitCode = $LASTEXITCODE
+
+$Artifact = Get-Item -Path (Join-Path $LocalSourceDir "$PackageId.$VersionPrefix.nupkg") -ErrorAction SilentlyContinue
+$PreviousVersion = if ($null -eq $highest) { "first release" } else { "was $highest" }
+$Published = if ($null -eq $Artifact) { "not produced" } else { $Artifact.FullName }
 
 Write-Host ""
-Write-Host "Package created: $($package.FullName)"
-Write-Host ""
-Write-Host "Install locally with:"
-Write-Host "  dotnet tool install --global Bitbound.ComputerUseDotnet --version $Version --add-source $output"
-Write-Host ""
-Write-Host "Then configure your MCP client with:"
-Write-Host "  command: computer-use-mcp"
+Write-Host "Publish summary"
+Write-Host "---------------"
+Write-Host "Package   : $PackageId"
+Write-Host "Version   : $VersionPrefix ($PreviousVersion)"
+Write-Host "Source    : $LocalSourceDir"
+Write-Host "Artifact  : $Published"
+Write-Host "Exit code : $PackExitCode"
+
+if ($PackExitCode -ne 0) {
+    throw "dotnet pack failed with exit code $PackExitCode."
+} 

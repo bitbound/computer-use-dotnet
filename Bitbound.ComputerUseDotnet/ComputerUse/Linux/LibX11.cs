@@ -10,12 +10,6 @@ internal static class LibX11
   private const string LibraryName = "libX11.so.6";
 
   [DllImport(LibraryName)]
-  public static extern int XInitThreads();
-
-  [DllImport(LibraryName)]
-  public static extern nint XOpenDisplay(string? displayName);
-
-  [DllImport(LibraryName)]
   public static extern void XCloseDisplay(nint display);
 
   [DllImport(LibraryName)]
@@ -25,37 +19,25 @@ internal static class LibX11
   public static extern nint XDefaultScreenOfDisplay(nint display);
 
   [DllImport(LibraryName)]
-  public static extern int XScreenCount(nint display);
-
-  [DllImport(LibraryName)]
-  public static extern int XWidthOfScreen(nint screen);
-
-  [DllImport(LibraryName)]
-  public static extern int XHeightOfScreen(nint screen);
-
-  [DllImport(LibraryName)]
-  public static extern int XRootX(nint screen);
-
-  [DllImport(LibraryName)]
-  public static extern int XRootY(nint screen);
-
-  [DllImport(LibraryName)]
-  public static extern nint XGetImage(nint display, nint drawable, int x, int y, uint width, uint height, nuint planeMask, int format);
-
-  [DllImport(LibraryName)]
   public static extern void XDestroyImage(nint ximage);
 
   [DllImport(LibraryName)]
   public static extern void XFlush(nint display);
 
   [DllImport(LibraryName)]
-  public static extern void XSync(nint display, bool discard);
+  public static extern nint XGetImage(nint display, nint drawable, int x, int y, uint width, uint height, nuint planeMask, int format);
 
   [DllImport(LibraryName)]
-  public static extern nint XStringToKeysym(string key);
+  public static extern int XHeightOfScreen(nint screen);
+
+  [DllImport(LibraryName)]
+  public static extern int XInitThreads();
 
   [DllImport(LibraryName)]
   public static extern uint XKeysymToKeycode(nint display, nint keysym);
+
+  [DllImport(LibraryName)]
+  public static extern nint XOpenDisplay(string? displayName);
 
   [DllImport(LibraryName)]
   public static extern int XQueryPointer(
@@ -68,6 +50,24 @@ internal static class LibX11
     out int winXReturn,
     out int winYReturn,
     out uint maskReturn);
+
+  [DllImport(LibraryName)]
+  public static extern int XRootX(nint screen);
+
+  [DllImport(LibraryName)]
+  public static extern int XRootY(nint screen);
+
+  [DllImport(LibraryName)]
+  public static extern int XScreenCount(nint display);
+
+  [DllImport(LibraryName)]
+  public static extern nint XStringToKeysym(string key);
+
+  [DllImport(LibraryName)]
+  public static extern void XSync(nint display, bool discard);
+
+  [DllImport(LibraryName)]
+  public static extern int XWidthOfScreen(nint screen);
 
   [StructLayout(LayoutKind.Sequential)]
   public struct XImage
