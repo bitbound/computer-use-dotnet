@@ -1,0 +1,24 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <Authors>Jared Goodwin</Authors>
+    <Copyright>©️ $([System.DateTime]::Now.Year) Bitbound</Copyright>
+    <RepositoryUrl>https://github.com/bitbound/computer-use-dotnet.git</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/bitbound/computer-use-dotnet</PackageProjectUrl>
+    <Company>Bitbound</Company>
+    <Description>A Model Context Protocol (MCP) server that lets an agent see the screen and simulate input on Windows, macOS, and Linux (X11 and Wayland).</Description>
+    <PackageTags>mcp model-context-protocol computer-use screen-capture input automation cross-platform</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);S125;NU1608;</NoWarn>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);BB0001;</WarningsNotAsErrors>
+  </PropertyGroup>
+</Project>

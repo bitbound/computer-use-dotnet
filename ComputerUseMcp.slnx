@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Bitbound.ComputerUseDotnet.Tests/Bitbound.ComputerUseDotnet.Tests.csproj" />
+  <Project Path="Bitbound.ComputerUseDotnet/Bitbound.ComputerUseDotnet.csproj" />
+</Solution>
