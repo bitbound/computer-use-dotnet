@@ -14,12 +14,12 @@ Add the following to your GitHub Copilot config (`mcp.json`):
 ```json
 {
   "mcpServers": {
-    "image-edit-mcp": {
+    "computer-use-dotnet": {
       "type": "stdio",
       "command": "dnx",
       "args": [
         "-y",
-        "Bitbound.ImageEditMcp"
+        "Bitbound.ComputerUseDotnet"
       ]
     }
   }
@@ -70,7 +70,7 @@ A `take_screenshot` of a single display is a crop of that desktop, so its fracti
 ### macOS setup notes
 
 1. Run `request_permissions` (or trigger a capture/input action) — macOS shows prompts for **Screen Recording** and **Accessibility**.
-2. **Relaunch the MCP server after granting**; macOS only applies TCC grants to a process at launch. The granted binary is the one hosting the tool (e.g. `computer-use-mcp`) — check System Settings › Privacy & Security if prompts never appear.
+2. **Relaunch the MCP server after granting**; macOS only applies TCC grants to a process at launch. The granted binary is the one hosting the tool (e.g. `computer-use-dotnet`) — check System Settings › Privacy & Security if prompts never appear.
 
 ### Wayland notes
 

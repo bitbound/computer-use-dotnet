@@ -10,7 +10,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PackageIcon>bitbound.png</PackageIcon>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>computer-use-mcp</ToolCommandName>
+    <ToolCommandName>computer-use-dotnet</ToolCommandName>
     <PackageId>Bitbound.ComputerUseDotnet</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RollForward>LatestMajor</RollForward>
