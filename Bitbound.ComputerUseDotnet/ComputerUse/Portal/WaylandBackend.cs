@@ -717,11 +717,7 @@ internal sealed class WaylandBackend(
   private readonly record struct PortalStream(uint Id, int X, int Y, int Width, int Height);
 
   /// <summary>Thrown when SelectDevices rejects a persisted restore token (worth a tokenless retry).</summary>
-  private sealed class RestoreTokenRejectedException : InvalidOperationException
+  private sealed class RestoreTokenRejectedException(string message) : InvalidOperationException(message)
   {
-    public RestoreTokenRejectedException(string message)
-      : base(message)
-    {
-    }
   }
 }

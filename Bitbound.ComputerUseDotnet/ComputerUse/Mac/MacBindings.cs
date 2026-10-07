@@ -209,16 +209,10 @@ internal static unsafe class MacBindings
   private static extern nint dlsym(nint handle, string symbol);
 
   [StructLayout(LayoutKind.Sequential)]
-  public struct CGPoint
+  public struct CGPoint(double x, double y)
   {
-    public double X;
-    public double Y;
-
-    public CGPoint(double x, double y)
-    {
-      X = x;
-      Y = y;
-    }
+    public double X = x;
+    public double Y = y;
   }
 
   [StructLayout(LayoutKind.Sequential)]

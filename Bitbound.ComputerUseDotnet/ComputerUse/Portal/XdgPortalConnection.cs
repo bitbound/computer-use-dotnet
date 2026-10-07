@@ -7,21 +7,19 @@ namespace Bitbound.ComputerUseDotnet.ComputerUse.Portal;
 /// Owns the session-bus connection to org.freedesktop.portal.Desktop and the
 /// "subscribe to Request::Response, then invoke, then await" request pattern.
 /// </summary>
-internal sealed class XdgPortalConnection : IDisposable
+internal sealed class XdgPortalConnection(ILogger logger) : IDisposable
 {
   public const string PortalBusName = "org.freedesktop.portal.Desktop";
   public const string PortalObjectPath = "/org/freedesktop/portal/desktop";
 
   private static readonly TimeSpan DefaultUserInteractionTimeout = TimeSpan.FromSeconds(120);
 
-  private readonly ILogger _logger;
+  private readonly ILogger _logger = logger;
   private readonly Lock _sync = new();
 
   private Connection? _connection;
   private ConnectionInfo? _connectionInfo;
   private int _tokenCounter;
-
-  public XdgPortalConnection(ILogger logger) => _logger = logger;
 
   public bool IsConnected => _connection is not null;
 

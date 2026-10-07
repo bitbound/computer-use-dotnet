@@ -22,15 +22,21 @@ public sealed partial class ComputerUseTools
 
     var builder = new StringBuilder();
     builder.AppendLine($"Backend: {_backend.BackendName} ({_backend.EnvironmentType})");
-    builder.AppendLine($"Virtual screen: {layout.Width}x{layout.Height} (origin offset {layout.OriginX},{layout.OriginY})");
-    builder.AppendLine($"Cursor: {(cursor is null ? "unsupported" : $"({cursor.Value.X}, {cursor.Value.Y})")}");
+    builder.AppendLine($"Desktop: {layout.Width}x{layout.Height} pixels (origin offset {layout.OriginX},{layout.OriginY})");
+    builder.AppendLine("Input tools take fractions of this desktop: x 0.0 left edge to 1.0 right edge, y 0.0 top edge to 1.0 bottom edge.");
+    builder.AppendLine($"Cursor: {(cursor is null ? "unsupported" : Describe(layout, cursor.Value))}");
     builder.AppendLine("Displays:");
 
     foreach (var display in layout.Displays)
     {
+      var (min, max) = layout.FractionBoundsOf(display);
+      var primary = display.IsPrimary ? "(primary) " : string.Empty;
+
       builder.AppendLine(
-        $"  [{display.Index}] {display.Name} {(display.IsPrimary ? "(primary) " : string.Empty)}" +
-        $"normalized=({display.X - layout.OriginX}, {display.Y - layout.OriginY}) {display.Width}x{display.Height} scale={display.Scale:0.##}");
+        $"  [{display.Index}] {display.Name} {primary}" +
+        $"pixel=({display.X - layout.OriginX}, {display.Y - layout.OriginY}) {display.Width}x{display.Height} " +
+        $"scale={Format(display.Scale, "0.##")} " +
+        $"fractions x {Format(min.X)} to {Format(max.X)}, y {Format(min.Y)} to {Format(max.Y)}");
     }
 
     builder.AppendLine($"Screen capture permission: {permissions.ScreenCapture}");

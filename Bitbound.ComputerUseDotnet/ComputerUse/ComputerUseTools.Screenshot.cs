@@ -4,13 +4,14 @@ public sealed partial class ComputerUseTools
 {
   [McpServerTool(Name = "take_screenshot")]
   [Description(
-    "Captures the screen and returns it as a PNG image. Coordinates used by the input tools are the " +
-    "pixel coordinates of this image when it covers the whole virtual screen. " +
-    "Returns a text block with capture metadata (size, scale, permission hints) followed by the image.")]
+    "Captures the screen and returns it as a PNG image, followed by a text block of capture metadata. " +
+    "When this captures the whole desktop, the input tools' fractions map straight onto it: x 0.0 is this " +
+    "image's left edge and 1.0 its right edge, y 0.0 its top and 1.0 its bottom. Fractions name the same " +
+    "spot at any image size, so downscaling never changes a coordinate.")]
   public async Task<IEnumerable<ContentBlock>> TakeScreenshot(
       [Description("Display index to capture (see get_desktop_info). -1 captures the entire virtual screen (all displays). Default: -1.")]
         int display = -1,
-      [Description("Optionally downscale the returned image so its longest side is at most this many pixels (token saving). 0 keeps native resolution. Input coordinates still refer to the native-size space.")]
+      [Description("Optionally downscale the returned image so its longest side is at most this many pixels (token saving). 0 keeps native resolution. Input coordinates are fractions, so they are unaffected by this.")]
         int max_side = 0)
   {
     using var bitmap = await _backend.CaptureVirtualScreenAsync();
@@ -73,19 +74,14 @@ public sealed partial class ComputerUseTools
     using var image = SKImage.FromBitmap(working);
     using var data = image.Encode(SKEncodedImageFormat.Png, 90);
 
-    string? note = null;
-
-    if (scaled)
-    {
-      var factor = (double)sourceWidth / working.Width;
-      note = $"Image was downscaled {factor:0.###}x; convert image pixels to input coordinates by multiplying by {factor:0.###}.";
-    }
-
     var text =
       $"Capture: {_backend.BackendName}. " +
       $"Image {working.Width}x{working.Height}px (virtual screen {layout.Width}x{layout.Height}px" +
       (display >= 0 ? $", display {display} crop {sourceWidth}x{sourceHeight}px" : ", full virtual screen") + "). " +
-      (note ?? "Input coordinates map 1:1 to image pixels.") +
+      (scaled ? "Downscaled to save tokens; input fractions are unaffected by resizing. " : string.Empty) +
+      (display >= 0
+        ? CropFractionNote(layout, layout.Displays[display])
+        : "Input tools take fractions of this image: x 0.0 left edge to 1.0 right edge, y 0.0 top to 1.0 bottom.") +
       " Remember to call request_permissions if tools report missing permissions.";
 
     var blocks = new List<ContentBlock>
@@ -98,5 +94,23 @@ public sealed partial class ComputerUseTools
     resize?.Dispose();
 
     return blocks;
+  }
+
+  /// <summary>
+  /// Tells a caller how to turn a fraction inside a single-display capture into a whole-desktop fraction.
+  /// The mapping stays linear only because a crop is a plain subset with no padding or letterboxing.
+  /// </summary>
+  private static string CropFractionNote(DisplayLayout layout, DisplayInfo display)
+  {
+    var (min, max) = layout.FractionBoundsOf(display);
+    var minX = Format(min.X);
+    var maxX = Format(max.X);
+    var minY = Format(min.Y);
+    var maxY = Format(max.Y);
+
+    return
+      $"This image is one display, not the whole desktop. It covers desktop x {minX} to {maxX} and y {minY} to {maxY}. " +
+      $"For a spot at image fraction (ix, iy), send x={minX}+{Format(max.X - min.X)}*ix and y={minY}+{Format(max.Y - min.Y)}*iy. " +
+      "Simpler: capture the whole desktop with display=-1.";
   }
 }

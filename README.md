@@ -24,23 +24,31 @@ dotnet tool install --global Bitbound.ComputerUseDotnet
 
 | Tool | Description |
 | --- | --- |
-| `take_screenshot` | Captures the screen (whole virtual screen or one display) and returns PNG image content plus coordinate-mapping metadata. Optional `max_side` downscales to save tokens. |
-| `get_desktop_info` | Backend, desktop environment, displays (bounds, scale, primary), and virtual-screen bounds. |
+| `take_screenshot` | Captures the screen (whole desktop or one display) and returns PNG image content plus coordinate-mapping metadata. Optional `max_side` downscales to save tokens; it never changes a coordinate. |
+| `get_desktop_info` | Backend, desktop environment, displays (bounds, scale, fraction range), desktop size, and cursor position. |
 | `check_permissions` | Reports screen-capture / input permission state without prompting. |
 | `request_permissions` | Asks the OS/portal for missing permissions (prompts the user where supported). |
-| `move_mouse` | Warps the pointer to a coordinate. |
-| `click` | Clicks at a coordinate (`button`, `click_count` for double-click). |
-| `drag` | Drags with a button held from one point to another (interpolated steps). |
-| `scroll` | Scrolls wheel clicks at a coordinate (positive `vertical` = up). |
+| `move_mouse` | Warps the pointer to a desktop fraction. |
+| `click` | Clicks at a desktop fraction (`button`, `click_count` for double-click). |
+| `drag` | Drags with a button held from one desktop fraction to another (interpolated steps). |
+| `scroll` | Scrolls wheel clicks at a desktop fraction (positive `vertical` = up). |
 | `type_text` | Types literal text (Unicode where the platform supports it). |
 | `press_key` | Presses a key chord like `ctrl+alt+delete`, `cmd+space`, or `a`. |
-| `get_cursor_position` | Current pointer position (null on Wayland, where the portal cannot report it). |
+| `get_cursor_position` | Current pointer position as a fraction and a pixel (unavailable on Wayland, where the portal cannot report it). |
 
 ## Coordinate model
 
-All coordinates are **logical pixels of the virtual screen**: the union of all display bounds with the origin moved to `(0, 0)` of that union. A full-screen `take_screenshot` returns an image whose pixels map 1:1 to those coordinates (Retina/HiDPI captures are downscaled to logical size; the response text states the exact mapping, including any downscale factor when `max_side` is used).
+Input tools take a position as a **fraction of the desktop**, not as pixels. `x` runs `0.0` at the left edge to `1.0` at the right edge and `y` runs `0.0` at the top to `1.0` at the bottom, so `(0.5, 0.5)` is the middle of the screen. The desktop is the union of all display bounds, with the top-left of that union as the origin.
 
-Example: a 1920×1080 display left of a 2560×1440 primary becomes a 4480×1440 virtual screen; `(0, 0)` is the left display's top-left corner.
+Fractions are what makes this survive real use. A screenshot is routinely resized before a model reasons over it, whether the server downscales it or the vision pipeline does, and a pixel coordinate measured on that smaller image points somewhere else once applied to the real display. A fraction points at the same spot at any image size. A full-desktop `take_screenshot` maps straight onto the grid, so something 40% across the image is `x: 0.4`.
+
+Values from 1 to 1000 are read as thousandths, for models trained on a 0-1000 grid. Anything else out of range returns a message instead of moving the pointer, and that message converts the number you sent into the fraction you meant.
+
+Every input result, plus `get_cursor_position`, echoes the resolved fraction and its pixel, so a wrong target is easy to see and correct. `get_desktop_info` reports the desktop size in pixels and each display's fraction range.
+
+Example: a 1920×1080 display left of a 2560×1440 primary becomes a 4480×1440 desktop. The left display covers `x` 0 to 0.428, the primary covers `x` 0.429 to 1.0.
+
+A `take_screenshot` of a single display is a crop of that desktop, so its fractions are not desktop fractions. The response text states the exact conversion, and the simplest fix is to capture the whole desktop instead.
 
 ## Platform support
 

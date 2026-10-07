@@ -138,14 +138,14 @@ internal sealed class MacBackend(ILogger<MacBackend> logger) : ComputerUseBacken
       flags |= MacVirtualKeys.GetModifierFlag(modifier);
     }
 
-    var shifted = false;
     ushort targetKey = 0;
     var unicodeFallback = false;
     char unicodeChar = '\0';
 
     if (chord.Target.Character is { } character)
     {
-      if (MacVirtualKeys.TryGetCharacter(character, out targetKey, out shifted))
+
+      if (MacVirtualKeys.TryGetCharacter(character, out targetKey, out bool shifted))
       {
         if (shifted)
         {
