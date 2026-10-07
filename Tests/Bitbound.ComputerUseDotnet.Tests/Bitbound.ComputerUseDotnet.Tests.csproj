@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Bitbound.ComputerUseDotnet\Bitbound.ComputerUseDotnet.csproj" />
+    <ProjectReference Include="../../Bitbound.ComputerUseDotnet/Bitbound.ComputerUseDotnet.csproj" />
   </ItemGroup>
 
   <ItemGroup>

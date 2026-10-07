@@ -2,20 +2,28 @@
 
 A cross-platform [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an agent **see the screen** and **simulate input** (mouse + keyboard) on Windows, macOS, and Linux (X11 and Wayland).
 
-Install as a .NET global tool and point any MCP client at the `computer-use-mcp` command.
+## Requirements
+
+- .NET 10 SDK
+- Linux/macOS/Windows (SkiaSharp native assets are included per-platform)
+
+## Usage with GitHub Copilot
+
+Add the following to your GitHub Copilot config (`mcp.json`):
 
 ```json
 {
   "mcpServers": {
-    "computer-use": {
-      "command": "computer-use-mcp"
+    "image-edit-mcp": {
+      "type": "stdio",
+      "command": "dnx",
+      "args": [
+        "-y",
+        "Bitbound.ImageEditMcp"
+      ]
     }
   }
 }
-```
-
-```powershell
-dotnet tool install --global Bitbound.ComputerUseDotnet
 ```
 
 > **Warning:** This server lets an agent control your real desktop. Review tool calls carefully and run it only with agents you trust.

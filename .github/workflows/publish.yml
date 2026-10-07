@@ -20,7 +20,7 @@ permissions:
 
 env:
   PKG_VERSION: "0.1.${{ github.run_number }}"
-  TEST_PROJECT: "Bitbound.ComputerUseDotnet.Tests/Bitbound.ComputerUseDotnet.Tests.csproj"
+  TEST_PROJECT: "Tests/Bitbound.ComputerUseDotnet.Tests/Bitbound.ComputerUseDotnet.Tests.csproj"
 
 jobs:
   publish:
