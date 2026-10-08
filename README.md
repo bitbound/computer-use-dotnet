@@ -43,6 +43,15 @@ Add the following to your GitHub Copilot config (`mcp.json`):
 | `type_text` | Types literal text (Unicode where the platform supports it). |
 | `press_key` | Presses a key chord like `ctrl+alt+delete`, `cmd+space`, or `a`. |
 | `get_cursor_position` | Current pointer position as a fraction and a pixel (unavailable on Wayland, where the portal cannot report it). |
+| `read_logs` | Returns recent lines from the server's rolling log file (tail, optional substring filter). Use after a tool error to see the full stack trace. |
+
+## Logs
+
+The server writes Information-and-above log lines to a rolling file at:
+- Windows: `%LOCALAPPDATA%\Bitbound\ComputerUseDotnet\Logs\computer-use-dotnet.log`
+- Linux/macOS: `~/.local/share/Bitbound/ComputerUseDotnet/Logs/computer-use-dotnet.log`
+
+The file rotates at 2 MB and keeps three backups. Tool errors are logged with the full exception (message, type, stack trace, inner exceptions); the tool result includes the message and a pointer to the `read_logs` tool, so a fresh-session agent that sees an error can find the rest without being told the log exists.
 
 ## Coordinate model
 

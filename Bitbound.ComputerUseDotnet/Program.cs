@@ -1,4 +1,5 @@
 ﻿using Bitbound.ComputerUseDotnet.ComputerUse;
+using Bitbound.ComputerUseDotnet.Logging;
 using Bitbound.SystemAbstractions;
 using Bitbound.SystemAbstractions.FileSystem;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,7 @@ var builder = Host.CreateApplicationBuilder(args);
 // Redirect all logging to stderr so it does not corrupt the protocol stream.
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+builder.Logging.AddProvider(new RollingFileLoggerProvider(LogPaths.LogDirectory));
 
 builder.Services.AddFileSystem();
 builder.Services.AddSingleton<IComputerUseBackend>(sp =>

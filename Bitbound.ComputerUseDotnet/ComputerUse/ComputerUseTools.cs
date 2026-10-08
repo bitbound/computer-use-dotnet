@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 
 namespace Bitbound.ComputerUseDotnet.ComputerUse;
 
@@ -28,4 +29,24 @@ public sealed partial class ComputerUseTools(IComputerUseBackend backend, ILogge
     "side" or "forward" => MouseButton.Side,
     _ => throw new ArgumentException($"Unknown mouse button '{button}'. Use left, right, middle, extra, or side."),
   };
+
+  private async Task<T> RunToolAsync<T>(string toolName, Func<Task<T>> action)
+  {
+    try
+    {
+      return await action();
+    }
+    catch (OperationCanceledException)
+    {
+      throw;
+    }
+    catch (Exception exception)
+    {
+      // A logger failure must not swallow the original error, or the MCP SDK falls back to its
+      // generic "An error occurred invoking X" and the actionable message is lost.
+      try { _logger.LogError(exception, "MCP tool {ToolName} failed.", toolName); }
+      catch { /* logger failure must not prevent the McpException below */ }
+      throw new McpException($"{toolName} failed: {exception.Message} (see read_logs for the full stack trace)", exception);
+    }
+  }
 }

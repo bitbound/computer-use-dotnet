@@ -8,11 +8,11 @@ public sealed partial class ComputerUseTools
     "When this captures the whole desktop, the input tools' fractions map straight onto it: x 0.0 is this " +
     "image's left edge and 1.0 its right edge, y 0.0 its top and 1.0 its bottom. Fractions name the same " +
     "spot at any image size, so downscaling never changes a coordinate.")]
-  public async Task<IEnumerable<ContentBlock>> TakeScreenshot(
+  public Task<IEnumerable<ContentBlock>> TakeScreenshot(
       [Description("Display index to capture (see get_desktop_info). -1 captures the entire virtual screen (all displays). Default: -1.")]
         int display = -1,
       [Description("Optionally downscale the returned image so its longest side is at most this many pixels (token saving). 0 keeps native resolution. Input coordinates are fractions, so they are unaffected by this.")]
-        int max_side = 0)
+        int max_side = 0) => RunToolAsync<IEnumerable<ContentBlock>>("take_screenshot", async () =>
   {
     using var bitmap = await _backend.CaptureVirtualScreenAsync();
     var layout = await _backend.GetDisplayLayoutAsync();
@@ -34,7 +34,6 @@ public sealed partial class ComputerUseTools
         target.Bottom - layout.OriginY);
 
       rect.Intersect(new SKRectI(0, 0, bitmap.Width, bitmap.Height));
-
       if (rect.Width <= 0 || rect.Height <= 0)
       {
         throw new InvalidOperationException("The requested display lies outside the captured image.");
@@ -55,17 +54,13 @@ public sealed partial class ComputerUseTools
       var downscale = (double)max_side / Math.Max(sourceWidth, sourceHeight);
       var newWidth = Math.Max(1, (int)Math.Round(sourceWidth * downscale));
       var newHeight = Math.Max(1, (int)Math.Round(sourceHeight * downscale));
-
       resize = new SKBitmap(newWidth, newHeight);
 
       using (var resizeCanvas = new SKCanvas(resize))
       using (var sourceImage = SKImage.FromBitmap(working))
       {
         resizeCanvas.Clear(SKColors.Black);
-        resizeCanvas.DrawImage(
-          sourceImage,
-          new SKRect(0, 0, newWidth, newHeight),
-          new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
+        resizeCanvas.DrawImage(sourceImage, new SKRect(0, 0, newWidth, newHeight), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
       }
 
       working = resize;
@@ -73,7 +68,6 @@ public sealed partial class ComputerUseTools
 
     using var image = SKImage.FromBitmap(working);
     using var data = image.Encode(SKEncodedImageFormat.Png, 90);
-
     var text =
       $"Capture: {_backend.BackendName}. " +
       $"Image {working.Width}x{working.Height}px (virtual screen {layout.Width}x{layout.Height}px" +
@@ -81,7 +75,7 @@ public sealed partial class ComputerUseTools
       (scaled ? "Downscaled to save tokens; input fractions are unaffected by resizing. " : string.Empty) +
       (display >= 0
         ? CropFractionNote(layout, layout.Displays[display])
-        : "Input tools take fractions of this image: x 0.0 left edge to 1.0 right edge, y 0.0 top to 1.0 bottom.") +
+        : "Input tools take fractions of this image: x 0.0 left edge to 1.0 right edge, y 0.0 top edge to 1.0 bottom edge.") +
       " Remember to call request_permissions if tools report missing permissions.";
 
     var blocks = new List<ContentBlock>
@@ -92,9 +86,8 @@ public sealed partial class ComputerUseTools
 
     crop?.Dispose();
     resize?.Dispose();
-
     return blocks;
-  }
+  });
 
   /// <summary>
   /// Tells a caller how to turn a fraction inside a single-display capture into a whole-desktop fraction.
