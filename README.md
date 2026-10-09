@@ -93,6 +93,10 @@ A `take_screenshot` of a single display is a crop of that desktop, so its fracti
 
 `press_key` accepts chords of `'+'`-separated tokens: modifier aliases (`ctrl`, `alt`, `shift`, `cmd`/`super`/`win`, `opt`, `meta`…) plus one target — a single character or a name such as `enter`, `tab`, `escape`, `up`, `pageup`, `printscreen`, `f5`. Names are case-insensitive with common aliases (`pgup`, `del`, `arrowleft`, …). Characters keep their case, so `press_key("A")` presses shift automatically on platforms without Unicode injection.
 
+## Agent skill
+
+`skills/computer-use-dotnet/SKILL.md` teaches a fresh agent to use these tools: the fraction coordinate model, the see-act loop, platform and permission notes, and the common traps. Load it by copying the `computer-use-dotnet` folder into `.qwen/skills/` (project) or `~/.qwen/skills/` (user), or install it from this repo's GitHub URL. The committed copy sits under `skills/` rather than `.qwen/skills/` so it survives a global `.qwen/` ignore rule.
+
 ## Development
 
 ```powershell
