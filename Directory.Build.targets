@@ -1,0 +1,11 @@
+<Project>
+
+  <!-- Native asset packages such as SkiaSharp ship multi-hundred-megabyte PDBs that are useless
+       at runtime. Drop every PDB from the publish output so they stay out of the tool package. -->
+  <Target Name="TrimSymbolsFromPublish" AfterTargets="ComputeFilesToPublish" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+</Project>
