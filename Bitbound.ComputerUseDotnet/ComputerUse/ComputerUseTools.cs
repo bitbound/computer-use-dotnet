@@ -17,20 +17,10 @@ public sealed partial class ComputerUseTools(IComputerUseBackend backend, ILogge
   private readonly ILogger<ComputerUseTools> _logger = logger;
 
   /// <summary>Formats a number for tool text, which a model reads back, so it must not follow the host locale.</summary>
-  private static string Format(double value, string specifier = "0.####") =>
+  internal static string Format(double value, string specifier = "0.####") =>
     value.ToString(specifier, CultureInfo.InvariantCulture);
 
-  private static MouseButton ParseMouseButton(string button) => button.Trim().ToLowerInvariant() switch
-  {
-    "left" => MouseButton.Left,
-    "right" => MouseButton.Right,
-    "middle" => MouseButton.Middle,
-    "extra" or "back" => MouseButton.Extra,
-    "side" or "forward" => MouseButton.Side,
-    _ => throw new ArgumentException($"Unknown mouse button '{button}'. Use left, right, middle, extra, or side."),
-  };
-
-  private async Task<T> RunToolAsync<T>(string toolName, Func<Task<T>> action)
+  internal static async Task<T> RunToolAsync<T>(string toolName, ILogger logger, Func<Task<T>> action)
   {
     try
     {
@@ -44,9 +34,21 @@ public sealed partial class ComputerUseTools(IComputerUseBackend backend, ILogge
     {
       // A logger failure must not swallow the original error, or the MCP SDK falls back to its
       // generic "An error occurred invoking X" and the actionable message is lost.
-      try { _logger.LogError(exception, "MCP tool {ToolName} failed.", toolName); }
+      try { logger.LogError(exception, "MCP tool {ToolName} failed.", toolName); }
       catch { /* logger failure must not prevent the McpException below */ }
       throw new McpException($"{toolName} failed: {exception.Message} (see read_logs for the full stack trace)", exception);
     }
   }
+
+  private static MouseButton ParseMouseButton(string button) => button.Trim().ToLowerInvariant() switch
+  {
+    "left" => MouseButton.Left,
+    "right" => MouseButton.Right,
+    "middle" => MouseButton.Middle,
+    "extra" or "back" => MouseButton.Extra,
+    "side" or "forward" => MouseButton.Side,
+    _ => throw new ArgumentException($"Unknown mouse button '{button}'. Use left, right, middle, extra, or side."),
+  };
+
+  private Task<T> RunToolAsync<T>(string toolName, Func<Task<T>> action) => RunToolAsync(toolName, _logger, action);
 }

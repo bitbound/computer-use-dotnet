@@ -46,23 +46,11 @@ public sealed partial class ComputerUseTools
 
     var sourceWidth = working.Width;
     var sourceHeight = working.Height;
-    var scaled = max_side > 0 && Math.Max(sourceWidth, sourceHeight) > max_side;
-    SKBitmap? resize = null;
+    var resize = DownscaleToMaxSide(working, max_side);
+    var scaled = resize is not null;
 
-    if (scaled)
+    if (resize is not null)
     {
-      var downscale = (double)max_side / Math.Max(sourceWidth, sourceHeight);
-      var newWidth = Math.Max(1, (int)Math.Round(sourceWidth * downscale));
-      var newHeight = Math.Max(1, (int)Math.Round(sourceHeight * downscale));
-      resize = new SKBitmap(newWidth, newHeight);
-
-      using (var resizeCanvas = new SKCanvas(resize))
-      using (var sourceImage = SKImage.FromBitmap(working))
-      {
-        resizeCanvas.Clear(SKColors.Black);
-        resizeCanvas.DrawImage(sourceImage, new SKRect(0, 0, newWidth, newHeight), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
-      }
-
       working = resize;
     }
 
@@ -88,6 +76,32 @@ public sealed partial class ComputerUseTools
     resize?.Dispose();
     return blocks;
   });
+
+  /// <summary>
+  /// Returns a resized copy of the bitmap when its longest side exceeds <paramref name="maxSide"/>,
+  /// or null when no resize is needed. Callers own the returned bitmap.
+  /// </summary>
+  internal static SKBitmap? DownscaleToMaxSide(SKBitmap source, int maxSide)
+  {
+    if (maxSide <= 0 || Math.Max(source.Width, source.Height) <= maxSide)
+    {
+      return null;
+    }
+
+    var downscale = (double)maxSide / Math.Max(source.Width, source.Height);
+    var newWidth = Math.Max(1, (int)Math.Round(source.Width * downscale));
+    var newHeight = Math.Max(1, (int)Math.Round(source.Height * downscale));
+    var resize = new SKBitmap(newWidth, newHeight);
+
+    using (var resizeCanvas = new SKCanvas(resize))
+    using (var sourceImage = SKImage.FromBitmap(source))
+    {
+      resizeCanvas.Clear(SKColors.Black);
+      resizeCanvas.DrawImage(sourceImage, new SKRect(0, 0, newWidth, newHeight), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
+    }
+
+    return resize;
+  }
 
   /// <summary>
   /// Tells a caller how to turn a fraction inside a single-display capture into a whole-desktop fraction.

@@ -34,6 +34,9 @@ Add the following to your GitHub Copilot config (`mcp.json`):
 | --- | --- |
 | `take_screenshot` | Captures the screen (whole desktop or one display) and returns PNG image content plus coordinate-mapping metadata. Optional `max_side` downscales to save tokens; it never changes a coordinate. |
 | `get_desktop_info` | Backend, desktop environment, displays (bounds, scale, fraction range), desktop size, and cursor position. |
+| `list_windows` | **Windows only.** Lists top-level windows (handle, title, class, process, bounds, state). Alt-tab-eligible by default; `include_invisible` / `include_tool_windows` / `title` / `process` widen it. |
+| `get_window_info` | **Windows only.** Full detail for one window, by handle from `list_windows` or by title substring. |
+| `capture_window` | **Windows only.** Captures a single window with `PrintWindow` (renders from the window's own DC, so it works while covered) and returns PNG content plus metadata. Optional `max_side`. |
 | `check_permissions` | Reports screen-capture / input permission state without prompting. |
 | `request_permissions` | Asks the OS/portal for missing permissions (prompts the user where supported). |
 | `move_mouse` | Warps the pointer to a desktop fraction. |

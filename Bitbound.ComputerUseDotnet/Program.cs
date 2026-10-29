@@ -1,4 +1,5 @@
 ﻿using Bitbound.ComputerUseDotnet.ComputerUse;
+using Bitbound.ComputerUseDotnet.ComputerUse.Windows;
 using Bitbound.ComputerUseDotnet.Logging;
 using Bitbound.SystemAbstractions;
 using Bitbound.SystemAbstractions.FileSystem;
@@ -20,8 +21,14 @@ builder.Services.AddSingleton<IComputerUseBackend>(sp =>
     sp.GetRequiredService<IFileSystem>(),
     sp.GetRequiredService<ILoggerFactory>()));
 
-builder.Services.AddMcpServer()
+var mcpServer = builder.Services.AddMcpServer()
     .WithStdioServerTransport()
     .WithTools<ComputerUseTools>();
+
+if (OperatingSystem.IsWindows())
+{
+  builder.Services.AddSingleton<WindowsWindowService>();
+  mcpServer.WithTools<WindowsWindowTools>();
+}
 
 await builder.Build().RunAsync();

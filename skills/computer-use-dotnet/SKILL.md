@@ -40,6 +40,9 @@ Every input result, and `get_cursor_position`, echoes the resolved fraction and 
 | --- | --- | --- |
 | `get_desktop_info` | none | Backend, environment type, desktop size and origin, cursor, per-display bounds, scale and fraction ranges, and permission state. Call this first. |
 | `take_screenshot` | `display=-1`, `max_side=0` | Captures the desktop (or one display) and returns a metadata text block plus a PNG. |
+| `list_windows` | none | Windows only. Lists top-level windows with handle, title, class, process, and bounds. Filters: `include_invisible`, `include_tool_windows`, `title`, `process`. |
+| `get_window_info` | `window` | Windows only. One window's detail. `window` is a handle from `list_windows` (e.g. `0x1A2B`) or a title substring. |
+| `capture_window` | `window`, `max_side=0` | Windows only. PrintWindow capture of a single window (works while covered). May render GPU-composited content blank; fall back to `take_screenshot`. |
 | `check_permissions` | none | Reports capture and input permission state without prompting. |
 | `request_permissions` | none | Triggers the OS or portal prompts for missing permissions. |
 | `move_mouse` | `x`, `y` | Moves the pointer without clicking. |

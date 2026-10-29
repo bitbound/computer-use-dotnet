@@ -9,6 +9,11 @@ internal static unsafe class Win32
   public const uint CAPTUREBLT = 0x40000000;
   public const uint DIB_RGB_COLORS = 0;
   public const nint DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4;
+  public const int DWMWA_CLOAKED = 14;
+  public const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
+  public const int GWLP_EXSTYLE = -20;
+  public const int GWLP_HWNDPARENT = -8;
+  public const int GWLP_STYLE = -16;
   public const uint INPUT_KEYBOARD = 1;
   public const uint INPUT_MOUSE = 0;
   public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
@@ -26,16 +31,21 @@ internal static unsafe class Win32
   public const uint MOUSEEVENTF_WHEEL = 0x0800;
   public const uint MOUSEEVENTF_XDOWN = 0x0080;
   public const uint MOUSEEVENTF_XUP = 0x0100;
+  public const uint PW_RENDERFULLCONTENT = 0x2;
   public const int SM_CXVIRTUALSCREEN = 78;
   public const int SM_CYVIRTUALSCREEN = 79;
   public const int SM_XVIRTUALSCREEN = 76;
   public const int SM_YVIRTUALSCREEN = 77;
   public const uint SRCCOPY = 0x00CC0020;
   public const int WHEEL_DELTA = 120;
+  public const int WS_EX_TOOLWINDOW = 0x00000080;
 
+  private const string Dwmapi = "dwmapi.dll";
   private const string Gdi32 = "gdi32.dll";
   private const string Shcore = "shcore.dll";
   private const string User32 = "user32.dll";
+
+  public delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
   public delegate bool MonitorEnumProc(nint hMonitor, nint hdcMonitor, RECT* lprcMonitor, nint dwData);
 
@@ -82,8 +92,20 @@ internal static unsafe class Win32
   [DllImport(Gdi32)]
   public static extern bool DeleteObject(nint obj);
 
+  [DllImport(Dwmapi)]
+  public static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+  [DllImport(Dwmapi)]
+  public static extern int DwmGetWindowAttribute(nint hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
+
   [DllImport(User32, CharSet = CharSet.Unicode)]
   public static extern bool EnumDisplayMonitors(nint hdc, RECT* lprcClip, MonitorEnumProc lpfnEnum, nint dwData);
+
+  [DllImport(User32, SetLastError = true)]
+  public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, nint lParam);
+
+  [DllImport(User32, CharSet = CharSet.Unicode)]
+  public static extern int GetClassNameW(nint hWnd, StringBuilder lpClassName, int nMaxCount);
 
   [DllImport(User32)]
   public static extern bool GetCursorPos(out POINT point);
@@ -97,11 +119,44 @@ internal static unsafe class Win32
   [DllImport(Shcore)]
   public static extern int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
 
+  [DllImport(User32)]
+  public static extern nint GetForegroundWindow();
+
   [DllImport(User32, CharSet = CharSet.Unicode)]
   public static extern bool GetMonitorInfo(nint hMonitor, ref MONITORINFOEX lpmi);
 
   [DllImport(User32)]
   public static extern int GetSystemMetrics(int nIndex);
+
+  [DllImport(User32, SetLastError = true)]
+  public static extern nint GetWindowDC(nint hWnd);
+
+  [DllImport(User32)]
+  public static extern nint GetWindowLongPtrW(nint hWnd, int nIndex);
+
+  [DllImport(User32, SetLastError = true)]
+  public static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+  [DllImport(User32)]
+  public static extern int GetWindowTextLengthW(nint hWnd);
+
+  [DllImport(User32, CharSet = CharSet.Unicode)]
+  public static extern int GetWindowTextW(nint hWnd, StringBuilder lpString, int nMaxCount);
+
+  [DllImport(User32)]
+  public static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
+
+  [DllImport(User32)]
+  public static extern bool IsIconic(nint hWnd);
+
+  [DllImport(User32)]
+  public static extern bool IsWindow(nint hWnd);
+
+  [DllImport(User32)]
+  public static extern bool IsWindowVisible(nint hWnd);
+
+  [DllImport(User32, SetLastError = true)]
+  public static extern bool PrintWindow(nint hWnd, nint hdcBlt, uint nFlags);
 
   [DllImport(User32)]
   public static extern int ReleaseDC(nint hWnd, nint hDC);
