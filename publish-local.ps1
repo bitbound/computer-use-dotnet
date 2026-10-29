@@ -2,6 +2,10 @@ $VersionPrefix = "1.0.0"
 $LocalSourceDir = $env:NUGET_LOCAL_SOURCE
 $RepoDir = $PSScriptRoot
 
+if (! $LocalSourceDir) {
+    throw "Local source directory not specified. Please set the NUGET_LOCAL_SOURCE environment variable."
+}
+
 if (-Not (Test-Path -Path $RepoDir)) {
     throw "Repository directory not found: $RepoDir"
 }
