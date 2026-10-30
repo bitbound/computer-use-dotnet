@@ -28,7 +28,9 @@ var mcpServer = builder.Services.AddMcpServer()
 if (OperatingSystem.IsWindows())
 {
   builder.Services.AddSingleton<WindowsWindowService>();
+  builder.Services.AddSingleton<WindowsUiaService>();
   mcpServer.WithTools<WindowsWindowTools>();
+  mcpServer.WithTools<WindowsUiaTools>();
 }
 
 await builder.Build().RunAsync();

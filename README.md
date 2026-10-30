@@ -1,6 +1,6 @@
 # Bitbound.ComputerUseDotnet
 
-A cross-platform [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an agent **see the screen** and **simulate input** (mouse + keyboard) on Windows, macOS, and Linux (X11 and Wayland).
+A cross-platform [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an agent **see the screen** and **simulate input** (mouse + keyboard) on Windows, macOS, and Linux (X11 and Wayland). On Windows it can also **act on UI Automation controls directly**, clicking and toggling without moving the pointer.
 
 ## Requirements
 
@@ -37,6 +37,9 @@ Add the following to your GitHub Copilot config (`mcp.json`):
 | `list_windows` | **Windows only.** Lists top-level windows (handle, title, class, process, bounds, state). Alt-tab-eligible by default; `include_invisible` / `include_tool_windows` / `title` / `process` widen it. |
 | `get_window_info` | **Windows only.** Full detail for one window, by handle from `list_windows` or by title substring. |
 | `capture_window` | **Windows only.** Captures a single window with `PrintWindow` (renders from the window's own DC, so it works while covered) and returns PNG content plus metadata. Optional `max_side`. |
+| `list_elements` | **Windows only.** Walks a window's UIA tree and lists actionable elements with ids (`e1`, `e2`, ...), control type, name, automation id, bounding rect, and supported patterns. Bounds: `max_depth` (default 25), `max_elements` (default 200), optional `control_type` / `name` filters. Ids expire when the window is re-listed. |
+| `perform_action` | **Windows only.** Activates a `list_elements` id through its UIA control pattern (`invoke`, `toggle`, `expand`, `collapse`, `set_value`, `select`, `scroll_into_view`) without moving the pointer. App-emulated, so custom-drawn controls need `click` instead. |
+| `get_element_state` | **Windows only.** Reads one element's state (name, enabled, Value/RangeValue, Toggle, ExpandCollapse, selection) without a screenshot. |
 | `check_permissions` | Reports screen-capture / input permission state without prompting. |
 | `request_permissions` | Asks the OS/portal for missing permissions (prompts the user where supported). |
 | `move_mouse` | Warps the pointer to a desktop fraction. |

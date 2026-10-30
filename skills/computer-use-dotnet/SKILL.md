@@ -43,6 +43,9 @@ Every input result, and `get_cursor_position`, echoes the resolved fraction and 
 | `list_windows` | none | Windows only. Lists top-level windows with handle, title, class, process, and bounds. Filters: `include_invisible`, `include_tool_windows`, `title`, `process`. |
 | `get_window_info` | `window` | Windows only. One window's detail. `window` is a handle from `list_windows` (e.g. `0x1A2B`) or a title substring. |
 | `capture_window` | `window`, `max_side=0` | Windows only. PrintWindow capture of a single window (works while covered). May render GPU-composited content blank; fall back to `take_screenshot`. |
+| `list_elements` | `window`, `max_depth=25`, `max_elements=200`, `control_type`, `name` | Windows only. Lists UIA elements with ids (`e1`, ...), control type, name, rect, and patterns. Prefer these over pixel clicks when elements are listed. Ids expire when the window is re-listed. |
+| `perform_action` | `element_id`, `action`, `value` | Windows only. UIA pattern activation without moving the pointer: `invoke`, `toggle`, `expand`, `collapse`, `set_value` (needs `value`), `select`, `scroll_into_view`. App-emulated; custom-drawn UI needs `click`. |
+| `get_element_state` | `element_id` | Windows only. Reads an element's Name/Value/Toggle/RangeValue/ExpandCollapse/selection without a screenshot. |
 | `check_permissions` | none | Reports capture and input permission state without prompting. |
 | `request_permissions` | none | Triggers the OS or portal prompts for missing permissions. |
 | `move_mouse` | `x`, `y` | Moves the pointer without clicking. |
@@ -68,6 +71,8 @@ Two habits keep this reliable.
 
 - Click a field before typing into it. `type_text` goes to whatever holds keyboard focus.
 - Capture again after any action that redraws the screen. The UI moves, and a stale screenshot will point you at the old location. If a step appears to do nothing, an immediate screenshot catching a half-drawn frame is the usual cause, so capture again.
+
+On Windows, try UIA before pixels for standard controls. `list_elements` on the window first. If the target shows up with an `invoke`, `toggle`, or `value` pattern, use `perform_action`. It is exact, works while the window is covered, and leaves the pointer alone. Fall back to the see-act loop when the tree is empty (canvas, game, and many Electron surfaces expose nothing) or when an action reports success but the screen shows nothing happened, because pattern activation is app-emulated and hover-only or custom-drawn UI ignores it.
 
 ## Platforms and permissions
 
